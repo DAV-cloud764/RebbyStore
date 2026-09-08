@@ -7,9 +7,9 @@ export default function BrandMark({
 }: BrandMarkProps) {
   return (
     <img
-      src="/public/images/brand/rebby-store-mark.png"
-      alt="RebbyStore"
-      className={`object-contain ${className}`}
+      src="public/images/brand/rebby-store-mark.png"
+      alt="RebbyStore logo"
+      className={`rounded-full object-cover ${className}`}
     />
   );
 }

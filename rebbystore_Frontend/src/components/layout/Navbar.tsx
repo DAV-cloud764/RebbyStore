@@ -50,16 +50,22 @@ export function Navbar() {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <Link
-            to="/"
-            className="flex items-center gap-2 group"
-            aria-label="RebbyStore home"
-            >
-            <BrandMark className="h-10 w-10 shrink-0" />
+  to="/"
+  className="flex items-center gap-3 group"
+  aria-label="RebbyStore home"
+>
+  <BrandMark className="h-11 w-11 shrink-0 border-2 border-white shadow-sm" />
 
-        <span className="font-display text-[1.35rem] font-semibold tracking-[0.01em] text-rs-ink group-hover:text-rs-accent transition-colors">
-          Rebby<span className="text-rs-accent">Store</span>
-        </span>
-          </Link>
+  <div className="flex flex-col leading-none">
+    <span className="font-display text-[1.35rem] font-semibold tracking-[0.01em] text-rs-ink group-hover:text-rs-accent transition-colors">
+      Rebby<span className="text-rs-accent">Store</span>
+    </span>
+
+    <span className="mt-1 text-[9px] font-medium uppercase tracking-[0.18em] text-rs-muted">
+      Your Crown. Your Style.
+    </span>
+  </div>
+</Link>
 
             {/* Desktop Nav */}
             <nav className="hidden md:flex items-center gap-8" aria-label="Main navigation">

@@ -7,7 +7,7 @@ export default function BrandLogo({
 }: BrandLogoProps) {
   return (
     <img
-      src="/public/images/brand/RebbyStore_logo.png"
+      src="public/images/brand/RebbyStore_logo.png"
       alt="RebbyStore"
       className={className}
     />
