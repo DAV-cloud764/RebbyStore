@@ -37,7 +37,7 @@ public class Product {
     private String hairType;
 
     @Column(name = "stock_quantity", nullable = false)
-    private Integer stockQuantity;
+    private Integer stockQuantity = 0;
 
     @Column(name = "low_stock_threshold", nullable = false)
     private Integer lowStockThreshold;
