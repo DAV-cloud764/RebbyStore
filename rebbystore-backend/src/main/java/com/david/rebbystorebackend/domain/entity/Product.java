@@ -166,4 +166,30 @@ public class Product {
     public void setUpdatedAt(OffsetDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }
+
+    public void increaseStock(int quantity) {
+        if (quantity <= 0) {
+            throw new IllegalArgumentException(
+                    "Stock increase quantity must be greater than zero"
+            );
+        }
+
+        this.stockQuantity += quantity;
+    }
+
+    public void decreaseStock(int quantity) {
+        if (quantity <= 0) {
+            throw new IllegalArgumentException(
+                    "Stock decrease quantity must be greater than zero"
+            );
+        }
+
+        if (this.stockQuantity < quantity) {
+            throw new IllegalArgumentException(
+                    "Insufficient stock for product with SKU '" + this.sku + "'"
+            );
+        }
+
+        this.stockQuantity -= quantity;
+    }
 }
