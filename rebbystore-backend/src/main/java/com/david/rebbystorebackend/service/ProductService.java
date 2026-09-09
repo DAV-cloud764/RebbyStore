@@ -3,13 +3,15 @@ package com.david.rebbystorebackend.service;
 import com.david.rebbystorebackend.domain.entity.Category;
 import com.david.rebbystorebackend.domain.entity.Product;
 import com.david.rebbystorebackend.domain.entity.ProductStatus;
+import com.david.rebbystorebackend.exception.ConflictException;
+import com.david.rebbystorebackend.exception.ResourceNotFoundException;
 import com.david.rebbystorebackend.repository.CategoryRepository;
 import com.david.rebbystorebackend.repository.ProductRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.OffsetDateTime;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.List;
 
 @Service
@@ -27,6 +29,79 @@ public class ProductService {
         this.categoryRepository = categoryRepository;
     }
 
+    // =========================================================
+    // GET ACTIVE PRODUCTS
+    // =========================================================
+
+    @Transactional(readOnly = true)
+    public List<Product> getActiveProducts() {
+        return productRepository.findByStatus(ProductStatus.ACTIVE);
+    }
+
+    // =========================================================
+    // GET PRODUCT BY ID
+    // =========================================================
+
+    @Transactional(readOnly = true)
+    public Product getProductById(Long id) {
+
+        if (id == null) {
+            throw new IllegalArgumentException("Product ID is required");
+        }
+
+        return productRepository.findById(id)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Product with ID '" + id + "' not found"
+                        )
+                );
+    }
+
+    // =========================================================
+    // GET PRODUCT BY SKU
+    // =========================================================
+
+    @Transactional(readOnly = true)
+    public Product getProductBySku(String sku) {
+
+        if (sku == null || sku.isBlank()) {
+            throw new IllegalArgumentException("SKU is required");
+        }
+
+        String normalizedSku = sku.trim();
+
+        return productRepository.findBySku(normalizedSku)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Product with SKU '" + normalizedSku + "' not found"
+                        )
+                );
+    }
+
+    // =========================================================
+    // GET PRODUCTS BY CATEGORY
+    // =========================================================
+
+    @Transactional(readOnly = true)
+    public List<Product> getProductsByCategory(Long categoryId) {
+
+        if (categoryId == null) {
+            throw new IllegalArgumentException("Category ID is required");
+        }
+
+        if (!categoryRepository.existsById(categoryId)) {
+            throw new ResourceNotFoundException(
+                    "Category with ID '" + categoryId + "' not found"
+            );
+        }
+
+        return productRepository.findByCategoryId(categoryId);
+    }
+
+    // =========================================================
+    // CREATE PRODUCT
+    // =========================================================
+
     public Product createProduct(
             Long categoryId,
             String name,
@@ -39,33 +114,46 @@ public class ProductService {
             String hairType,
             Integer lowStockThreshold
     ) {
-        validateRequiredFields(name, sku, price, lowStockThreshold);
 
-        if (productRepository.existsBySku(sku)) {
-            throw new IllegalArgumentException(
-                    "Product with SKU '" + sku + "' already exists"
+        validateProductData(
+                categoryId,
+                name,
+                sku,
+                price,
+                lowStockThreshold
+        );
+
+        String normalizedName = name.trim();
+        String normalizedSku = sku.trim();
+
+        if (productRepository.existsBySku(normalizedSku)) {
+            throw new ConflictException(
+                    "Product with SKU '" + normalizedSku + "' already exists"
             );
         }
 
         Category category = categoryRepository.findById(categoryId)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Category with id " + categoryId + " not found"
+                        new ResourceNotFoundException(
+                                "Category with ID '" + categoryId + "' not found"
                         )
                 );
 
-        if (!Boolean.TRUE.equals(category.getActive())) {
+        if (!category.getActive()) {
             throw new IllegalArgumentException(
-                    "Cannot create a product under an inactive category"
+                    "Cannot create product under an inactive category"
             );
         }
 
+        Product product = new Product();
         OffsetDateTime now = OffsetDateTime.now();
 
-        Product product = new Product();
+        product.setCreatedAt(now);
+        product.setUpdatedAt(now);
+
         product.setCategory(category);
-        product.setName(name);
-        product.setSku(sku);
+        product.setName(normalizedName);
+        product.setSku(normalizedSku);
         product.setDescription(description);
         product.setPrice(price);
         product.setColor(color);
@@ -73,44 +161,25 @@ public class ProductService {
         product.setLength(length);
         product.setHairType(hairType);
 
-        // Stock is controlled by InventoryService.
+        product.setUpdatedAt(OffsetDateTime.now());
+
+        /*
+         * Stock is deliberately NOT set here.
+         *
+         * Product stock is controlled by InventoryService through
+         * increaseStock() and decreaseStock().
+         *
+         * The Product entity should initialize stockQuantity to 0.
+         */
         product.setLowStockThreshold(lowStockThreshold);
         product.setStatus(ProductStatus.ACTIVE);
-        product.setCreatedAt(now);
-        product.setUpdatedAt(now);
 
         return productRepository.save(product);
     }
 
-    @Transactional(readOnly = true)
-    public Product getProductById(Long id) {
-        return productRepository.findById(id)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Product with id " + id + " not found"
-                        )
-                );
-    }
-
-    @Transactional(readOnly = true)
-    public Product getProductBySku(String sku) {
-        return productRepository.findBySku(sku)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Product with SKU '" + sku + "' not found"
-                        )
-                );
-    }
-
-    @Transactional(readOnly = true)
-    public List<Product> getActiveProducts() {
-        return productRepository.findByStatus(ProductStatus.ACTIVE);
-    }
-
-    @Transactional(readOnly = true)
-    public List<Product> getProductsByCategory(Long categoryId) {
-        return productRepository.findByCategoryId(categoryId);
-    }
+    // =========================================================
+    // UPDATE PRODUCT
+    // =========================================================
 
     public Product updateProduct(
             Long id,
@@ -125,34 +194,55 @@ public class ProductService {
             String hairType,
             Integer lowStockThreshold
     ) {
-        validateRequiredFields(name, sku, price, lowStockThreshold);
 
-        Product product = getProductById(id);
+        validateProductData(
+                categoryId,
+                name,
+                sku,
+                price,
+                lowStockThreshold
+        );
 
-        productRepository.findBySku(sku)
-                .filter(existing -> !existing.getId().equals(id))
-                .ifPresent(existing -> {
-                    throw new IllegalArgumentException(
-                            "Product with SKU '" + sku + "' already exists"
-                    );
-                });
-
-        Category category = categoryRepository.findById(categoryId)
+        Product product = productRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Category with id " + categoryId + " not found"
+                        new ResourceNotFoundException(
+                                "Product with ID '" + id + "' not found"
                         )
                 );
 
-        if (!Boolean.TRUE.equals(category.getActive())) {
+        Category category = categoryRepository.findById(categoryId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Category with ID '" + categoryId + "' not found"
+                        )
+                );
+
+        if (!category.getActive()) {
             throw new IllegalArgumentException(
-                    "Cannot assign a product to an inactive category"
+                    "Cannot assign product to an inactive category"
+            );
+        }
+
+        String normalizedName = name.trim();
+        String normalizedSku = sku.trim();
+
+        /*
+         * The product may keep its current SKU.
+         *
+         * But if the SKU is being changed, the new SKU must not
+         * already belong to another product.
+         */
+        if (!product.getSku().equalsIgnoreCase(normalizedSku)
+                && productRepository.existsBySku(normalizedSku)) {
+
+            throw new ConflictException(
+                    "Product with SKU '" + normalizedSku + "' already exists"
             );
         }
 
         product.setCategory(category);
-        product.setName(name);
-        product.setSku(sku);
+        product.setName(normalizedName);
+        product.setSku(normalizedSku);
         product.setDescription(description);
         product.setPrice(price);
         product.setColor(color);
@@ -160,47 +250,119 @@ public class ProductService {
         product.setLength(length);
         product.setHairType(hairType);
         product.setLowStockThreshold(lowStockThreshold);
-        product.setUpdatedAt(OffsetDateTime.now());
 
         return productRepository.save(product);
     }
 
-    public Product deactivateProduct(Long id) {
-        Product product = getProductById(id);
+    // =========================================================
+    // DEACTIVATE PRODUCT
+    // =========================================================
 
+    public void deactivateProduct(Long id) {
+
+        Product product = productRepository.findById(id)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Product with ID '" + id + "' not found"
+                        )
+                );
+
+        /*
+         * Deactivating an already inactive product is intentionally
+         * idempotent: the operation simply does nothing.
+         */
         if (product.getStatus() == ProductStatus.INACTIVE) {
-            return product;
+            return;
         }
 
         product.setStatus(ProductStatus.INACTIVE);
-        product.setUpdatedAt(OffsetDateTime.now());
+
+        productRepository.save(product);
+    }
+
+    // =========================================================
+    // ACTIVATE PRODUCT
+    // =========================================================
+
+    public Product activateProduct(Long id) {
+
+        Product product = productRepository.findById(id)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Product with ID '" + id + "' not found"
+                        )
+                );
+
+        Category category = product.getCategory();
+
+        if (category == null) {
+            throw new IllegalArgumentException(
+                    "Product must belong to a category"
+            );
+        }
+
+        if (!category.getActive()) {
+            throw new IllegalArgumentException(
+                    "Cannot activate a product under an inactive category"
+            );
+        }
+
+        product.setStatus(ProductStatus.ACTIVE);
 
         return productRepository.save(product);
     }
 
-    private void validateRequiredFields(
+    // =========================================================
+    // VALIDATE PRODUCT DATA
+    // =========================================================
+
+    private void validateProductData(
+            Long categoryId,
             String name,
             String sku,
             BigDecimal price,
             Integer lowStockThreshold
     ) {
-        if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("Product name is required");
-        }
 
-        if (sku == null || sku.isBlank()) {
-            throw new IllegalArgumentException("Product SKU is required");
-        }
-
-        if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
+        if (categoryId == null) {
             throw new IllegalArgumentException(
-                    "Product price must be greater than zero"
+                    "Category ID is required"
             );
         }
 
-        if (lowStockThreshold == null || lowStockThreshold < 0) {
+        if (name == null || name.isBlank()) {
             throw new IllegalArgumentException(
-                    "Low stock threshold cannot be negative"
+                    "Product name is required"
+            );
+        }
+
+        if (sku == null || sku.isBlank()) {
+            throw new IllegalArgumentException(
+                    "SKU is required"
+            );
+        }
+
+        if (price == null) {
+            throw new IllegalArgumentException(
+                    "Price is required"
+            );
+        }
+
+        if (price.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException(
+                    "Price must be greater than zero"
+            );
+        }
+
+        if (lowStockThreshold == null) {
+            throw new IllegalArgumentException(
+                    "Low stock threshold is required"
+            );
+        }
+
+        if (lowStockThreshold < 0) {
+            throw new IllegalArgumentException(
+                    "Low stock threshold must not be negative"
             );
         }
     }

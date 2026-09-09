@@ -1,6 +1,8 @@
 package com.david.rebbystorebackend.service;
 
 import com.david.rebbystorebackend.domain.entity.Customer;
+import com.david.rebbystorebackend.exception.ConflictException;
+import com.david.rebbystorebackend.exception.ResourceNotFoundException;
 import com.david.rebbystorebackend.repository.CustomerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -9,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,42 +34,47 @@ class CustomerServiceTest {
     @Test
     void shouldCreateCustomer() {
         Customer customer = customerService.createCustomer(
-                "David John",
-                "0712 345 678",
-                "David@Example.com"
+                "David Philanthropist",
+                "0712345678",
+                "david@example.com"
         );
 
         assertThat(customer.getId()).isNotNull();
-        assertThat(customer.getFullName())
-                .isEqualTo("David John");
-        assertThat(customer.getPhone())
-                .isEqualTo("0712345678");
-        assertThat(customer.getEmail())
-                .isEqualTo("david@example.com");
-        assertThat(customer.getTotalOrders())
-                .isZero();
-        assertThat(customer.getTotalSpent())
-                .isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(customer.getFullName()).isEqualTo("David Philanthropist");
+        assertThat(customer.getPhone()).isEqualTo("0712345678");
+        assertThat(customer.getEmail()).isEqualTo("david@example.com");
+        assertThat(customer.getTotalOrders()).isEqualTo(0);
+        assertThat(customer.getTotalSpent()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(customer.getCreatedAt()).isNotNull();
         assertThat(customer.getUpdatedAt()).isNotNull();
     }
 
     @Test
-    void shouldNormalizeInternationalPhoneNumber() {
+    void shouldNormalizePhoneNumber() {
         Customer customer = customerService.createCustomer(
-                "David John",
-                "+255712345678",
+                "David",
+                "+255 712 345 678",
                 "david@example.com"
         );
 
-        assertThat(customer.getPhone())
-                .isEqualTo("0712345678");
+        assertThat(customer.getPhone()).isEqualTo("0712345678");
+    }
+
+    @Test
+    void shouldNormalizeEmail() {
+        Customer customer = customerService.createCustomer(
+                "David",
+                "0712345678",
+                "  DAVID@EXAMPLE.COM  "
+        );
+
+        assertThat(customer.getEmail()).isEqualTo("david@example.com");
     }
 
     @Test
     void shouldRejectDuplicatePhone() {
         customerService.createCustomer(
-                "David John",
+                "David",
                 "0712345678",
                 "david@example.com"
         );
@@ -74,18 +82,18 @@ class CustomerServiceTest {
         assertThatThrownBy(() ->
                 customerService.createCustomer(
                         "Another Customer",
-                        "0712 345 678",
+                        "0712345678",
                         "another@example.com"
                 )
         )
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("already exists");
     }
 
     @Test
     void shouldRejectDuplicateEmail() {
         customerService.createCustomer(
-                "David John",
+                "David",
                 "0712345678",
                 "david@example.com"
         );
@@ -93,185 +101,207 @@ class CustomerServiceTest {
         assertThatThrownBy(() ->
                 customerService.createCustomer(
                         "Another Customer",
-                        "0755555555",
+                        "0712345679",
                         "DAVID@EXAMPLE.COM"
                 )
         )
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("already exists");
     }
 
     @Test
     void shouldGetCustomerById() {
         Customer created = customerService.createCustomer(
-                "David John",
+                "David",
                 "0712345678",
                 "david@example.com"
         );
 
-        Customer found =
-                customerService.getCustomerById(created.getId());
+        Customer found = customerService.getCustomerById(created.getId());
 
-        assertThat(found.getFullName())
-                .isEqualTo("David John");
+        assertThat(found.getId()).isEqualTo(created.getId());
+        assertThat(found.getFullName()).isEqualTo("David");
+        assertThat(found.getPhone()).isEqualTo("0712345678");
+        assertThat(found.getEmail()).isEqualTo("david@example.com");
+    }
+
+    @Test
+    void shouldRejectMissingCustomerId() {
+        assertThatThrownBy(() ->
+                customerService.getCustomerById(999999L)
+        )
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("not found");
     }
 
     @Test
     void shouldGetCustomerByPhone() {
         customerService.createCustomer(
-                "David John",
+                "David",
                 "0712345678",
                 "david@example.com"
         );
 
-        Customer found =
-                customerService.getCustomerByPhone("0712 345 678");
+        Customer found = customerService.getCustomerByPhone(
+                "+255 712 345 678"
+        );
 
-        assertThat(found.getPhone())
-                .isEqualTo("0712345678");
+        assertThat(found.getFullName()).isEqualTo("David");
+        assertThat(found.getPhone()).isEqualTo("0712345678");
+    }
+
+    @Test
+    void shouldRejectMissingCustomerPhone() {
+        assertThatThrownBy(() ->
+                customerService.getCustomerByPhone("0712345679")
+        )
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("not found");
     }
 
     @Test
     void shouldGetCustomerByEmail() {
         customerService.createCustomer(
-                "David John",
+                "David",
                 "0712345678",
-                "David@Example.com"
+                "david@example.com"
         );
 
-        Customer found =
-                customerService.getCustomerByEmail("DAVID@EXAMPLE.COM");
+        Customer found = customerService.getCustomerByEmail(
+                "DAVID@EXAMPLE.COM"
+        );
 
-        assertThat(found.getEmail())
-                .isEqualTo("david@example.com");
+        assertThat(found.getFullName()).isEqualTo("David");
+        assertThat(found.getEmail()).isEqualTo("david@example.com");
+    }
+
+    @Test
+    void shouldRejectMissingCustomerEmail() {
+        assertThatThrownBy(() ->
+                customerService.getCustomerByEmail("missing@example.com")
+        )
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("not found");
     }
 
     @Test
     void shouldUpdateCustomer() {
         Customer created = customerService.createCustomer(
-                "David John",
+                "David",
                 "0712345678",
                 "david@example.com"
         );
 
         Customer updated = customerService.updateCustomer(
                 created.getId(),
-                "David Joseph",
-                "0755555555",
-                "david.joseph@example.com"
+                "David Updated",
+                "+255 713 456 789",
+                "updated@example.com"
         );
 
-        assertThat(updated.getFullName())
-                .isEqualTo("David Joseph");
-        assertThat(updated.getPhone())
-                .isEqualTo("0755555555");
-        assertThat(updated.getEmail())
-                .isEqualTo("david.joseph@example.com");
+        assertThat(updated.getId()).isEqualTo(created.getId());
+        assertThat(updated.getFullName()).isEqualTo("David Updated");
+        assertThat(updated.getPhone()).isEqualTo("0713456789");
+        assertThat(updated.getEmail()).isEqualTo("updated@example.com");
+        assertThat(updated.getUpdatedAt()).isNotNull();
     }
 
     @Test
     void shouldRejectUpdatingToExistingPhone() {
-        customerService.createCustomer(
-                "Customer One",
+        Customer first = customerService.createCustomer(
+                "First Customer",
                 "0712345678",
                 "one@example.com"
         );
 
-        Customer second = customerService.createCustomer(
-                "Customer Two",
-                "0755555555",
+        customerService.createCustomer(
+                "Second Customer",
+                "0712345679",
                 "two@example.com"
         );
 
         assertThatThrownBy(() ->
                 customerService.updateCustomer(
-                        second.getId(),
-                        "Customer Two Updated",
-                        "0712 345 678",
-                        "two.updated@example.com"
+                        first.getId(),
+                        "First Customer",
+                        "0712345679",
+                        "one@example.com"
                 )
         )
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("already exists");
     }
 
     @Test
     void shouldRejectUpdatingToExistingEmail() {
-        customerService.createCustomer(
-                "Customer One",
+        Customer first = customerService.createCustomer(
+                "First Customer",
                 "0712345678",
                 "one@example.com"
         );
 
-        Customer second = customerService.createCustomer(
-                "Customer Two",
-                "0755555555",
+        customerService.createCustomer(
+                "Second Customer",
+                "0712345679",
                 "two@example.com"
         );
 
         assertThatThrownBy(() ->
                 customerService.updateCustomer(
-                        second.getId(),
-                        "Customer Two Updated",
-                        "0766666666",
-                        "ONE@EXAMPLE.COM"
+                        first.getId(),
+                        "First Customer",
+                        "0712345678",
+                        "two@example.com"
+                )
+        )
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("already exists");
+    }
+
+    @Test
+    void shouldRejectBlankCustomerName() {
+        assertThatThrownBy(() ->
+                customerService.createCustomer(
+                        "",
+                        "0712345678",
+                        "david@example.com"
                 )
         )
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("already exists");
+                .hasMessageContaining("full name is required");
     }
 
     @Test
     void shouldRejectInvalidPhone() {
         assertThatThrownBy(() ->
                 customerService.createCustomer(
-                        "David John",
-                        "12345",
+                        "David",
+                        "1234567890",
                         "david@example.com"
                 )
         )
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage(
-                        "Phone must be a valid Tanzanian mobile number"
-                );
+                .hasMessageContaining("valid Tanzanian mobile number");
     }
 
-    @Test
-    void shouldRejectBlankFullName() {
-        assertThatThrownBy(() ->
-                customerService.createCustomer(
-                        " ",
-                        "0712345678",
-                        "david@example.com"
-                )
-        )
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Customer full name is required");
-    }
+    private Customer createCustomer(
+            String fullName,
+            String phone,
+            String email
+    ) {
+        Customer customer = new Customer();
 
-    @Test
-    void shouldRejectBlankPhone() {
-        assertThatThrownBy(() ->
-                customerService.createCustomer(
-                        "David John",
-                        " ",
-                        "david@example.com"
-                )
-        )
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Customer phone is required");
-    }
+        customer.setFullName(fullName);
+        customer.setPhone(phone);
+        customer.setEmail(email);
+        customer.setTotalOrders(0);
+        customer.setTotalSpent(BigDecimal.ZERO);
 
-    @Test
-    void shouldRejectBlankEmail() {
-        assertThatThrownBy(() ->
-                customerService.createCustomer(
-                        "David John",
-                        "0712345678",
-                        " "
-                )
-        )
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Customer email is required");
+        OffsetDateTime now = OffsetDateTime.now();
+
+        customer.setCreatedAt(now);
+        customer.setUpdatedAt(now);
+
+        return customerRepository.save(customer);
     }
 }

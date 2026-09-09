@@ -1,6 +1,8 @@
 package com.david.rebbystorebackend.service;
 
 import com.david.rebbystorebackend.domain.entity.Customer;
+import com.david.rebbystorebackend.exception.ConflictException;
+import com.david.rebbystorebackend.exception.ResourceNotFoundException;
 import com.david.rebbystorebackend.repository.CustomerRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,13 +31,13 @@ public class CustomerService {
         String normalizedEmail = normalizeEmail(email);
 
         if (customerRepository.existsByPhone(normalizedPhone)) {
-            throw new IllegalArgumentException(
+            throw new ConflictException(
                     "Customer with phone '" + normalizedPhone + "' already exists"
             );
         }
 
         if (customerRepository.existsByEmailIgnoreCase(normalizedEmail)) {
-            throw new IllegalArgumentException(
+            throw new ConflictException(
                     "Customer with email '" + normalizedEmail + "' already exists"
             );
         }
@@ -43,6 +45,7 @@ public class CustomerService {
         OffsetDateTime now = OffsetDateTime.now();
 
         Customer customer = new Customer();
+
         customer.setFullName(fullName.trim());
         customer.setPhone(normalizedPhone);
         customer.setEmail(normalizedEmail);
@@ -56,10 +59,14 @@ public class CustomerService {
 
     @Transactional(readOnly = true)
     public Customer getCustomerById(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("Customer ID is required");
+        }
+
         return customerRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Customer with id " + id + " not found"
+                        new ResourceNotFoundException(
+                                "Customer with ID '" + id + "' not found"
                         )
                 );
     }
@@ -70,7 +77,7 @@ public class CustomerService {
 
         return customerRepository.findByPhone(normalizedPhone)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new ResourceNotFoundException(
                                 "Customer with phone '" +
                                         normalizedPhone +
                                         "' not found"
@@ -84,7 +91,7 @@ public class CustomerService {
 
         return customerRepository.findByEmailIgnoreCase(normalizedEmail)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new ResourceNotFoundException(
                                 "Customer with email '" +
                                         normalizedEmail +
                                         "' not found"
@@ -108,7 +115,7 @@ public class CustomerService {
         customerRepository.findByPhone(normalizedPhone)
                 .filter(existing -> !existing.getId().equals(id))
                 .ifPresent(existing -> {
-                    throw new IllegalArgumentException(
+                    throw new ConflictException(
                             "Customer with phone '" +
                                     normalizedPhone +
                                     "' already exists"
@@ -118,7 +125,7 @@ public class CustomerService {
         customerRepository.findByEmailIgnoreCase(normalizedEmail)
                 .filter(existing -> !existing.getId().equals(id))
                 .ifPresent(existing -> {
-                    throw new IllegalArgumentException(
+                    throw new ConflictException(
                             "Customer with email '" +
                                     normalizedEmail +
                                     "' already exists"
@@ -134,6 +141,10 @@ public class CustomerService {
     }
 
     private String normalizePhone(String phone) {
+        if (phone == null || phone.isBlank()) {
+            throw new IllegalArgumentException("Customer phone is required");
+        }
+
         String normalized = phone.trim().replaceAll("[\\s()-]", "");
 
         if (normalized.startsWith("+255")) {
@@ -152,6 +163,10 @@ public class CustomerService {
     }
 
     private String normalizeEmail(String email) {
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("Customer email is required");
+        }
+
         return email.trim().toLowerCase();
     }
 

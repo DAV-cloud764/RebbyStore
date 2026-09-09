@@ -1,4 +1,4 @@
-package com.david.rebbystorebackend.service;
+package com.david.rebbystorebackend.controller;
 
 import com.david.rebbystorebackend.domain.entity.Category;
 import com.david.rebbystorebackend.repository.CategoryRepository;
@@ -6,219 +6,315 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
+import java.time.OffsetDateTime;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
+@AutoConfigureMockMvc
 @Transactional
-class CategoryServiceTest {
+class CategoryControllerTest {
 
     @Autowired
-    private CategoryService categoryService;
+    private MockMvc mockMvc;
 
     @Autowired
     private CategoryRepository categoryRepository;
 
+    private Category category;
+
     @BeforeEach
     void setUp() {
-        categoryRepository.deleteAll();
-    }
-
-    @Test
-    void shouldCreateCategory() {
-        Category category = categoryService.createCategory(
+        category = createCategory(
                 "Human Hair",
                 "human-hair",
                 "Premium human hair wigs"
         );
-
-        assertThat(category.getId()).isNotNull();
-        assertThat(category.getName()).isEqualTo("Human Hair");
-        assertThat(category.getSlug()).isEqualTo("human-hair");
-        assertThat(category.getDescription())
-                .isEqualTo("Premium human hair wigs");
-        assertThat(category.getActive()).isTrue();
-        assertThat(category.getCreatedAt()).isNotNull();
-        assertThat(category.getUpdatedAt()).isNotNull();
     }
 
     @Test
-    void shouldRejectDuplicateCategoryName() {
-        categoryService.createCategory(
-                "Human Hair",
-                "human-hair",
-                "Premium human hair wigs"
-        );
+    void shouldCreateCategory() throws Exception {
+        String requestBody = """
+                {
+                  "name": "Bob Wigs",
+                  "slug": "bob-wigs",
+                  "description": "Classic bob wigs"
+                }
+                """;
 
-        assertThatThrownBy(() ->
-                categoryService.createCategory(
-                        "Human Hair",
-                        "human-hair-2",
-                        "Another description"
+        mockMvc.perform(
+                        post("/api/categories")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody)
                 )
-        )
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("already exists");
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.name").value("Bob Wigs"))
+                .andExpect(jsonPath("$.slug").value("bob-wigs"))
+                .andExpect(jsonPath("$.description").value("Classic bob wigs"))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.createdAt").exists())
+                .andExpect(jsonPath("$.updatedAt").exists());
     }
 
     @Test
-    void shouldRejectDuplicateCategorySlug() {
-        categoryService.createCategory(
-                "Human Hair",
-                "human-hair",
-                "Premium human hair wigs"
+    void shouldGetActiveCategories() throws Exception {
+        Category activeCategory = category;
+
+        Category inactiveCategory = createCategory(
+                "Braided Wigs",
+                "braided-wigs",
+                "Braided wig styles"
         );
 
-        assertThatThrownBy(() ->
-                categoryService.createCategory(
-                        "Lace Front",
-                        "human-hair",
-                        "Lace front wigs"
+        inactiveCategory.setActive(false);
+        inactiveCategory.setUpdatedAt(OffsetDateTime.now());
+        categoryRepository.save(inactiveCategory);
+
+        mockMvc.perform(
+                        get("/api/categories")
                 )
-        )
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("already exists");
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$[?(@.id == %d)]"
+                        .formatted(activeCategory.getId())).exists())
+                .andExpect(jsonPath("$[?(@.id == %d)]"
+                        .formatted(inactiveCategory.getId())).doesNotExist());
     }
 
     @Test
-    void shouldGetCategoryById() {
-        Category created = categoryService.createCategory(
-                "Bob Wigs",
-                "bob-wigs",
-                "Classic bob wigs"
-        );
-
-        Category found = categoryService.getCategoryById(created.getId());
-
-        assertThat(found.getName()).isEqualTo("Bob Wigs");
-        assertThat(found.getSlug()).isEqualTo("bob-wigs");
+    void shouldGetCategoryById() throws Exception {
+        mockMvc.perform(
+                        get("/api/categories/{id}", category.getId())
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(category.getId()))
+                .andExpect(jsonPath("$.name").value("Human Hair"))
+                .andExpect(jsonPath("$.slug").value("human-hair"))
+                .andExpect(jsonPath("$.description")
+                        .value("Premium human hair wigs"))
+                .andExpect(jsonPath("$.active").value(true));
     }
 
     @Test
-    void shouldGetCategoryBySlug() {
-        categoryService.createCategory(
+    void shouldGetCategoryBySlug() throws Exception {
+        mockMvc.perform(
+                        get("/api/categories/slug/{slug}", "human-hair")
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(category.getId()))
+                .andExpect(jsonPath("$.name").value("Human Hair"))
+                .andExpect(jsonPath("$.slug").value("human-hair"))
+                .andExpect(jsonPath("$.description")
+                        .value("Premium human hair wigs"))
+                .andExpect(jsonPath("$.active").value(true));
+    }
+
+    @Test
+    void shouldUpdateCategory() throws Exception {
+        String requestBody = """
+                {
+                  "name": "Updated Human Hair",
+                  "slug": "updated-human-hair",
+                  "description": "Updated human hair collection"
+                }
+                """;
+
+        mockMvc.perform(
+                        put("/api/categories/{id}", category.getId())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody)
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(category.getId()))
+                .andExpect(jsonPath("$.name").value("Updated Human Hair"))
+                .andExpect(jsonPath("$.slug").value("updated-human-hair"))
+                .andExpect(jsonPath("$.description")
+                        .value("Updated human hair collection"))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.updatedAt").exists());
+    }
+
+    @Test
+    void shouldDeactivateCategory() throws Exception {
+        mockMvc.perform(
+                        delete("/api/categories/{id}", category.getId())
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(category.getId()))
+                .andExpect(jsonPath("$.name").value("Human Hair"))
+                .andExpect(jsonPath("$.slug").value("human-hair"))
+                .andExpect(jsonPath("$.active").value(false));
+
+        Category updatedCategory = categoryRepository
+                .findById(category.getId())
+                .orElseThrow();
+
+        assertEquals(false, updatedCategory.getActive());
+    }
+
+    @Test
+    void shouldReturnBadRequestForInvalidRequest() throws Exception {
+        String requestBody = """
+                {
+                  "name": "",
+                  "slug": "",
+                  "description": "Invalid category"
+                }
+                """;
+
+        mockMvc.perform(
+                        post("/api/categories")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody)
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message")
+                        .value("Request validation failed"))
+                .andExpect(jsonPath("$.path").value("/api/categories"))
+                .andExpect(jsonPath("$.fieldErrors").exists())
+                .andExpect(jsonPath("$.fieldErrors.name").exists())
+                .andExpect(jsonPath("$.fieldErrors.slug").exists());
+    }
+
+    @Test
+    void shouldReturnConflictForDuplicateCategoryName() throws Exception {
+        String requestBody = """
+                {
+                  "name": "Human Hair",
+                  "slug": "human-hair-new",
+                  "description": "Another category"
+                }
+                """;
+
+        mockMvc.perform(
+                        post("/api/categories")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody)
+                )
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message")
+                        .value("Category with name 'Human Hair' already exists"))
+                .andExpect(jsonPath("$.path").value("/api/categories"))
+                .andExpect(jsonPath("$.fieldErrors").isEmpty());
+    }
+
+    @Test
+    void shouldReturnConflictForDuplicateCategorySlug() throws Exception {
+        String requestBody = """
+                {
+                  "name": "Lace Front",
+                  "slug": "human-hair",
+                  "description": "Lace front wigs"
+                }
+                """;
+
+        mockMvc.perform(
+                        post("/api/categories")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody)
+                )
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message")
+                        .value("Category with slug 'human-hair' already exists"))
+                .andExpect(jsonPath("$.path").value("/api/categories"))
+                .andExpect(jsonPath("$.fieldErrors").isEmpty());
+    }
+
+    @Test
+    void shouldReturnNotFoundForMissingCategory() throws Exception {
+        mockMvc.perform(
+                        get("/api/categories/{id}", 999999L)
+                )
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message")
+                        .value("Category with ID '999999' not found"))
+                .andExpect(jsonPath("$.path").value("/api/categories/999999"))
+                .andExpect(jsonPath("$.fieldErrors").isEmpty());
+    }
+
+    @Test
+    void shouldReturnNotFoundForMissingCategorySlug() throws Exception {
+        mockMvc.perform(
+                        get("/api/categories/slug/{slug}", "does-not-exist")
+                )
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message")
+                        .value("Category with slug 'does-not-exist' not found"))
+                .andExpect(jsonPath("$.path")
+                        .value("/api/categories/slug/does-not-exist"))
+                .andExpect(jsonPath("$.fieldErrors").isEmpty());
+    }
+
+    @Test
+    void shouldReturnConflictWhenUpdatingToExistingSlug() throws Exception {
+        Category secondCategory = createCategory(
                 "Lace Front",
                 "lace-front",
                 "Lace front wigs"
         );
 
-        Category found = categoryService.getCategoryBySlug("lace-front");
+        String requestBody = """
+                {
+                  "name": "Updated Lace Front",
+                  "slug": "human-hair",
+                  "description": "Updated description"
+                }
+                """;
 
-        assertThat(found.getName()).isEqualTo("Lace Front");
-    }
-
-    @Test
-    void shouldReturnOnlyActiveCategories() {
-        Category active = categoryService.createCategory(
-                "Human Hair",
-                "human-hair",
-                "Human hair wigs"
-        );
-
-        Category inactive = categoryService.createCategory(
-                "Bob Wigs",
-                "bob-wigs",
-                "Bob wigs"
-        );
-
-        categoryService.deactivateCategory(inactive.getId());
-
-        List<Category> categories = categoryService.getActiveCategories();
-
-        assertThat(categories)
-                .extracting(Category::getId)
-                .contains(active.getId())
-                .doesNotContain(inactive.getId());
-    }
-
-    @Test
-    void shouldUpdateCategory() {
-        Category category = categoryService.createCategory(
-                "Human Hair",
-                "human-hair",
-                "Original description"
-        );
-
-        Category updated = categoryService.updateCategory(
-                category.getId(),
-                "Premium Human Hair",
-                "premium-human-hair",
-                "Updated description"
-        );
-
-        assertThat(updated.getName()).isEqualTo("Premium Human Hair");
-        assertThat(updated.getSlug()).isEqualTo("premium-human-hair");
-        assertThat(updated.getDescription())
-                .isEqualTo("Updated description");
-    }
-
-    @Test
-    void shouldDeactivateCategory() {
-        Category category = categoryService.createCategory(
-                "Bob Wigs",
-                "bob-wigs",
-                "Bob wigs"
-        );
-
-        Category deactivated =
-                categoryService.deactivateCategory(category.getId());
-
-        assertThat(deactivated.getActive()).isFalse();
-    }
-
-    @Test
-    void shouldRejectBlankCategoryName() {
-        assertThatThrownBy(() ->
-                categoryService.createCategory(
-                        "",
-                        "human-hair",
-                        "Description"
+        mockMvc.perform(
+                        put("/api/categories/{id}", secondCategory.getId())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody)
                 )
-        )
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Category name is required");
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message")
+                        .value("Category with slug 'human-hair' already exists"))
+                .andExpect(jsonPath("$.path")
+                        .value("/api/categories/" + secondCategory.getId()))
+                .andExpect(jsonPath("$.fieldErrors").isEmpty());
     }
 
-    @Test
-    void shouldRejectBlankCategorySlug() {
-        assertThatThrownBy(() ->
-                categoryService.createCategory(
-                        "Human Hair",
-                        " ",
-                        "Description"
-                )
-        )
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Category slug is required");
-    }
+    private Category createCategory(
+            String name,
+            String slug,
+            String description
+    ) {
+        Category category = new Category();
 
-    @Test
-    void shouldRejectUpdatingToExistingSlug() {
-        categoryService.createCategory(
-                "Human Hair",
-                "human-hair",
-                "Human hair"
-        );
+        category.setName(name);
+        category.setSlug(slug);
+        category.setDescription(description);
+        category.setActive(true);
 
-        Category laceFront = categoryService.createCategory(
-                "Lace Front",
-                "lace-front",
-                "Lace front"
-        );
+        OffsetDateTime now = OffsetDateTime.now();
 
-        assertThatThrownBy(() ->
-                categoryService.updateCategory(
-                        laceFront.getId(),
-                        "Lace Front Updated",
-                        "human-hair",
-                        "Updated"
-                )
-        )
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("already exists");
+        category.setCreatedAt(now);
+        category.setUpdatedAt(now);
+
+        return categoryRepository.save(category);
     }
 }
