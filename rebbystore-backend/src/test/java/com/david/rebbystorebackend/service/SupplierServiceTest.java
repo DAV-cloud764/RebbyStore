@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
+import com.david.rebbystorebackend.exception.ResourceNotFoundException;
+import com.david.rebbystorebackend.exception.ConflictException;
 
 import java.util.List;
 
@@ -159,7 +161,7 @@ class SupplierServiceTest {
                         null
                 )
         )
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ConflictException.class)
                 .hasMessageContaining(
                         "already exists"
                 );
@@ -215,11 +217,9 @@ class SupplierServiceTest {
 
     @Test
     void shouldRejectNonExistingSupplier() {
-        assertThatThrownBy(() ->
-                supplierService.getById(999999L)
-        )
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("not found");
+        assertThatThrownBy(() -> supplierService.getById(999999L))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Supplier with id 999999 not found");
     }
 
     @Test
