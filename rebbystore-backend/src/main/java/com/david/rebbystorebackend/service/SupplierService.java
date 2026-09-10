@@ -1,6 +1,8 @@
 package com.david.rebbystorebackend.service;
 
 import com.david.rebbystorebackend.domain.entity.Supplier;
+import com.david.rebbystorebackend.exception.ConflictException;
+import com.david.rebbystorebackend.exception.ResourceNotFoundException;
 import com.david.rebbystorebackend.repository.SupplierRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,7 +32,7 @@ public class SupplierService {
         String normalizedAddress = normalizeOptional(address);
 
         if (supplierRepository.existsByNameIgnoreCase(normalizedName)) {
-            throw new IllegalArgumentException(
+            throw new ConflictException(
                     "Supplier with name '" + normalizedName + "' already exists"
             );
         }
@@ -50,9 +52,13 @@ public class SupplierService {
 
     @Transactional(readOnly = true)
     public Supplier getById(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("Supplier ID is required");
+        }
+
         return supplierRepository.findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new ResourceNotFoundException(
                                 "Supplier with id " + id + " not found"
                         )
                 );
@@ -64,7 +70,7 @@ public class SupplierService {
 
         return supplierRepository.findByNameIgnoreCase(normalizedName)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new ResourceNotFoundException(
                                 "Supplier with name '" +
                                         normalizedName +
                                         "' not found"
@@ -96,7 +102,7 @@ public class SupplierService {
 
         if (nameChanged &&
                 supplierRepository.existsByNameIgnoreCase(normalizedName)) {
-            throw new IllegalArgumentException(
+            throw new ConflictException(
                     "Supplier with name '" + normalizedName + "' already exists"
             );
         }
@@ -112,7 +118,6 @@ public class SupplierService {
 
     public void delete(Long id) {
         Supplier supplier = getById(id);
-
         supplierRepository.delete(supplier);
     }
 
