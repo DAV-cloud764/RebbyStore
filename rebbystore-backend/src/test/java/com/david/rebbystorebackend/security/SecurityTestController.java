@@ -34,6 +34,11 @@ class SecurityTestController {
         return authentication.getName();
     }
 
+    @GetMapping("/api/orders/status/test")
+    String orderStatusEndpoint(Authentication authentication) {
+        return authentication.getName();
+    }
+
     @GetMapping("/api/reporting/test")
     String reportingEndpoint(Authentication authentication) {
         return authentication.getName();

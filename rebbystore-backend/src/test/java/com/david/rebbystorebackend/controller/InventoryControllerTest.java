@@ -6,20 +6,29 @@ import com.david.rebbystorebackend.domain.entity.ProductStatus;
 import com.david.rebbystorebackend.repository.CategoryRepository;
 import com.david.rebbystorebackend.repository.InventoryMovementRepository;
 import com.david.rebbystorebackend.repository.ProductRepository;
+import com.david.rebbystorebackend.security.UserPrincipal;
+import com.david.rebbystorebackend.security.jwt.JwtService;
+import com.david.rebbystorebackend.security.service.CustomUserDetailsService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -29,6 +38,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 class InventoryControllerTest {
+
+    private static final String STAFF_TOKEN = "staff-token";
 
     @Autowired
     private MockMvc mockMvc;
@@ -42,15 +53,49 @@ class InventoryControllerTest {
     @Autowired
     private InventoryMovementRepository inventoryMovementRepository;
 
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private CustomUserDetailsService userDetailsService;
+
     @BeforeEach
     void setUp() {
         inventoryMovementRepository.deleteAll();
         productRepository.deleteAll();
         categoryRepository.deleteAll();
+
+        UserPrincipal staffPrincipal = UserPrincipal.createForTesting(
+                2L,
+                "staff",
+                "staff@rebbystore.co.tz",
+                "$2a$10$dummy",
+                true,
+                List.of(new SimpleGrantedAuthority("ROLE_STAFF"))
+        );
+
+        when(jwtService.isTokenValid(STAFF_TOKEN))
+                .thenReturn(true);
+
+        when(jwtService.extractUsername(STAFF_TOKEN))
+                .thenReturn(staffPrincipal.getUsername());
+
+        when(userDetailsService.loadUserByUsername("staff"))
+                .thenReturn(staffPrincipal);
+    }
+
+    private MockHttpServletRequestBuilder authenticated(
+            MockHttpServletRequestBuilder request
+    ) {
+        return request.header(
+                "Authorization",
+                "Bearer " + STAFF_TOKEN
+        );
     }
 
     @Test
     void shouldStockInProduct() throws Exception {
+
         Product product = createProduct(
                 "Stock In Wig",
                 "INV-001",
@@ -64,10 +109,14 @@ class InventoryControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/inventory/{productId}/stock-in",
-                                product.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/inventory/{productId}/stock-in",
+                                        product.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").isNumber())
@@ -83,9 +132,12 @@ class InventoryControllerTest {
                         .value(3))
                 .andExpect(jsonPath("$.reason")
                         .value("adjustment"))
-                .andExpect(jsonPath("$.orderId").doesNotExist())
-                .andExpect(jsonPath("$.purchaseId").doesNotExist())
-                .andExpect(jsonPath("$.createdAt").exists());
+                .andExpect(jsonPath("$.orderId")
+                        .doesNotExist())
+                .andExpect(jsonPath("$.purchaseId")
+                        .doesNotExist())
+                .andExpect(jsonPath("$.createdAt")
+                        .exists());
 
         Product updatedProduct = productRepository
                 .findById(product.getId())
@@ -99,6 +151,7 @@ class InventoryControllerTest {
 
     @Test
     void shouldStockOutProduct() throws Exception {
+
         Product product = createProduct(
                 "Stock Out Wig",
                 "INV-002",
@@ -112,10 +165,14 @@ class InventoryControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/inventory/{productId}/stock-out",
-                                product.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/inventory/{productId}/stock-out",
+                                        product.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.productId")
@@ -139,6 +196,7 @@ class InventoryControllerTest {
 
     @Test
     void shouldIncreaseStockUsingAdjustment() throws Exception {
+
         Product product = createProduct(
                 "Increase Adjustment Wig",
                 "INV-003",
@@ -153,10 +211,14 @@ class InventoryControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/inventory/{productId}/adjust",
-                                product.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/inventory/{productId}/adjust",
+                                        product.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.productId")
@@ -180,6 +242,7 @@ class InventoryControllerTest {
 
     @Test
     void shouldDecreaseStockUsingAdjustment() throws Exception {
+
         Product product = createProduct(
                 "Decrease Adjustment Wig",
                 "INV-004",
@@ -194,10 +257,14 @@ class InventoryControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/inventory/{productId}/adjust",
-                                product.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/inventory/{productId}/adjust",
+                                        product.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.productId")
@@ -221,6 +288,7 @@ class InventoryControllerTest {
 
     @Test
     void shouldGetCurrentStock() throws Exception {
+
         Product product = createProduct(
                 "Current Stock Wig",
                 "INV-005",
@@ -228,8 +296,12 @@ class InventoryControllerTest {
         );
 
         mockMvc.perform(
-                        get("/api/inventory/{productId}/stock",
-                                product.getId())
+                        authenticated(
+                                get(
+                                        "/api/inventory/{productId}/stock",
+                                        product.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.productId")
@@ -240,6 +312,7 @@ class InventoryControllerTest {
 
     @Test
     void shouldDetectLowStock() throws Exception {
+
         Product product = createProduct(
                 "Low Stock Wig",
                 "INV-006",
@@ -250,8 +323,12 @@ class InventoryControllerTest {
         productRepository.save(product);
 
         mockMvc.perform(
-                        get("/api/inventory/{productId}/low-stock",
-                                product.getId())
+                        authenticated(
+                                get(
+                                        "/api/inventory/{productId}/low-stock",
+                                        product.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.productId")
@@ -262,6 +339,7 @@ class InventoryControllerTest {
 
     @Test
     void shouldDetectProductIsNotLowStock() throws Exception {
+
         Product product = createProduct(
                 "Healthy Stock Wig",
                 "INV-007",
@@ -272,8 +350,12 @@ class InventoryControllerTest {
         productRepository.save(product);
 
         mockMvc.perform(
-                        get("/api/inventory/{productId}/low-stock",
-                                product.getId())
+                        authenticated(
+                                get(
+                                        "/api/inventory/{productId}/low-stock",
+                                        product.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.productId")
@@ -284,6 +366,7 @@ class InventoryControllerTest {
 
     @Test
     void shouldGetProductMovements() throws Exception {
+
         Product product = createProduct(
                 "Movement Wig",
                 "INV-008",
@@ -294,8 +377,12 @@ class InventoryControllerTest {
         stockOut(product.getId(), 2);
 
         mockMvc.perform(
-                        get("/api/inventory/{productId}/movements",
-                                product.getId())
+                        authenticated(
+                                get(
+                                        "/api/inventory/{productId}/movements",
+                                        product.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
@@ -317,6 +404,7 @@ class InventoryControllerTest {
 
     @Test
     void shouldRejectInvalidStockInRequest() throws Exception {
+
         Product product = createProduct(
                 "Invalid Stock In",
                 "INV-009",
@@ -330,10 +418,14 @@ class InventoryControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/inventory/{productId}/stock-in",
-                                product.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/inventory/{productId}/stock-in",
+                                        product.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.quantity")
@@ -342,6 +434,7 @@ class InventoryControllerTest {
 
     @Test
     void shouldRejectInvalidStockOutRequest() throws Exception {
+
         Product product = createProduct(
                 "Invalid Stock Out",
                 "INV-010",
@@ -355,10 +448,14 @@ class InventoryControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/inventory/{productId}/stock-out",
-                                product.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/inventory/{productId}/stock-out",
+                                        product.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.quantity")
@@ -367,6 +464,7 @@ class InventoryControllerTest {
 
     @Test
     void shouldRejectInvalidAdjustmentRequest() throws Exception {
+
         Product product = createProduct(
                 "Invalid Adjustment",
                 "INV-011",
@@ -381,10 +479,14 @@ class InventoryControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/inventory/{productId}/adjust",
-                                product.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/inventory/{productId}/adjust",
+                                        product.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.increase")
@@ -408,21 +510,32 @@ class InventoryControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/inventory/{productId}/stock-out",
-                                product.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/inventory/{productId}/stock-out",
+                                        product.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message")
-                        .value("Insufficient stock for product with SKU 'INV-012'"));
+                        .value(
+                                "Insufficient stock for product with SKU 'INV-012'"
+                        ));
     }
 
     @Test
     void shouldReturnBadRequestForMissingProduct() throws Exception {
+
         mockMvc.perform(
-                        get("/api/inventory/{productId}/stock",
-                                999999L)
+                        authenticated(
+                                get(
+                                        "/api/inventory/{productId}/stock",
+                                        999999L
+                                )
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message")
@@ -475,10 +588,14 @@ class InventoryControllerTest {
                 """.formatted(quantity);
 
         mockMvc.perform(
-                        post("/api/inventory/{productId}/stock-in",
-                                productId)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/inventory/{productId}/stock-in",
+                                        productId
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isOk());
     }
@@ -495,10 +612,14 @@ class InventoryControllerTest {
                 """.formatted(quantity);
 
         mockMvc.perform(
-                        post("/api/inventory/{productId}/stock-out",
-                                productId)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/inventory/{productId}/stock-out",
+                                        productId
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isOk());
     }

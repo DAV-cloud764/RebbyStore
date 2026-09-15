@@ -5,17 +5,24 @@ import com.david.rebbystorebackend.domain.entity.Product;
 import com.david.rebbystorebackend.domain.entity.ProductStatus;
 import com.david.rebbystorebackend.repository.CategoryRepository;
 import com.david.rebbystorebackend.repository.ProductRepository;
+import com.david.rebbystorebackend.security.UserPrincipal;
+import com.david.rebbystorebackend.security.jwt.JwtService;
+import com.david.rebbystorebackend.security.service.CustomUserDetailsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -23,11 +30,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
 class ProductControllerTest {
+
+    private static final String STAFF_TOKEN = "staff-token";
 
     @Autowired
     private MockMvc mockMvc;
@@ -38,11 +48,44 @@ class ProductControllerTest {
     @Autowired
     private CategoryRepository categoryRepository;
 
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private CustomUserDetailsService userDetailsService;
+
     private Category category;
 
     @BeforeEach
     void setUp() {
         category = createCategory();
+
+        UserPrincipal staffPrincipal = UserPrincipal.createForTesting(
+                2L,
+                "staff",
+                "staff@rebbystore.co.tz",
+                "$2a$10$dummy",
+                true,
+                List.of(new SimpleGrantedAuthority("ROLE_STAFF"))
+        );
+
+        when(jwtService.isTokenValid(STAFF_TOKEN))
+                .thenReturn(true);
+
+        when(jwtService.extractUsername(STAFF_TOKEN))
+                .thenReturn(staffPrincipal.getUsername());
+
+        when(userDetailsService.loadUserByUsername("staff"))
+                .thenReturn(staffPrincipal);
+    }
+
+    private MockHttpServletRequestBuilder authenticated(
+            MockHttpServletRequestBuilder request
+    ) {
+        return request.header(
+                "Authorization",
+                "Bearer " + STAFF_TOKEN
+        );
     }
 
     @Test
@@ -63,9 +106,11 @@ class ProductControllerTest {
                 """.formatted(category.getId());
 
         mockMvc.perform(
-                        post("/api/products")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post("/api/products")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").exists())
@@ -93,11 +138,16 @@ class ProductControllerTest {
         );
 
         mockMvc.perform(
-                        get("/api/products")
+                        authenticated(
+                                get("/api/products")
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$[?(@.id == %d)]".formatted(activeProduct.getId())).exists());
+                .andExpect(jsonPath(
+                        "$[?(@.id == %d)]"
+                                .formatted(activeProduct.getId())
+                ).exists());
     }
 
     @Test
@@ -109,7 +159,9 @@ class ProductControllerTest {
         );
 
         mockMvc.perform(
-                        get("/api/products/{id}", product.getId())
+                        authenticated(
+                                get("/api/products/{id}", product.getId())
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(product.getId()))
@@ -127,7 +179,9 @@ class ProductControllerTest {
         );
 
         mockMvc.perform(
-                        get("/api/products/sku/{sku}", "WIG-003")
+                        authenticated(
+                                get("/api/products/sku/{sku}", "WIG-003")
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Straight Wig"))
@@ -150,7 +204,12 @@ class ProductControllerTest {
         );
 
         mockMvc.perform(
-                        get("/api/products/category/{categoryId}", category.getId())
+                        authenticated(
+                                get(
+                                        "/api/products/category/{categoryId}",
+                                        category.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
@@ -181,9 +240,11 @@ class ProductControllerTest {
                 """.formatted(category.getId());
 
         mockMvc.perform(
-                        put("/api/products/{id}", product.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                put("/api/products/{id}", product.getId())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(product.getId()))
@@ -206,11 +267,14 @@ class ProductControllerTest {
         );
 
         mockMvc.perform(
-                        delete("/api/products/{id}", product.getId())
+                        authenticated(
+                                delete("/api/products/{id}", product.getId())
+                        )
                 )
                 .andExpect(status().isNoContent());
 
-        Product updatedProduct = productRepository.findById(product.getId())
+        Product updatedProduct = productRepository
+                .findById(product.getId())
                 .orElseThrow();
 
         org.junit.jupiter.api.Assertions.assertEquals(
@@ -232,21 +296,26 @@ class ProductControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/products")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post("/api/products")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Bad Request"))
-                .andExpect(jsonPath("$.message").value("Request validation failed"))
-                .andExpect(jsonPath("$.path").value("/api/products"))
+                .andExpect(jsonPath("$.message")
+                        .value("Request validation failed"))
+                .andExpect(jsonPath("$.path")
+                        .value("/api/products"))
                 .andExpect(jsonPath("$.fieldErrors").exists())
                 .andExpect(jsonPath("$.fieldErrors.name").exists())
                 .andExpect(jsonPath("$.fieldErrors.sku").exists())
                 .andExpect(jsonPath("$.fieldErrors.price").exists())
                 .andExpect(jsonPath("$.fieldErrors.categoryId").exists())
-                .andExpect(jsonPath("$.fieldErrors.lowStockThreshold").exists());
+                .andExpect(jsonPath("$.fieldErrors.lowStockThreshold")
+                        .exists());
     }
 
     @Test
@@ -269,30 +338,36 @@ class ProductControllerTest {
                 """.formatted(category.getId());
 
         mockMvc.perform(
-                        post("/api/products")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post("/api/products")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409))
                 .andExpect(jsonPath("$.error").value("Conflict"))
                 .andExpect(jsonPath("$.message")
                         .value("Product with SKU 'WIG-001' already exists"))
-                .andExpect(jsonPath("$.path").value("/api/products"))
+                .andExpect(jsonPath("$.path")
+                        .value("/api/products"))
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
     }
 
     @Test
     void shouldReturnNotFoundForMissingProduct() throws Exception {
         mockMvc.perform(
-                        get("/api/products/{id}", 999999L)
+                        authenticated(
+                                get("/api/products/{id}", 999999L)
+                        )
                 )
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.error").value("Not Found"))
                 .andExpect(jsonPath("$.message")
                         .value("Product with ID '999999' not found"))
-                .andExpect(jsonPath("$.path").value("/api/products/999999"))
+                .andExpect(jsonPath("$.path")
+                        .value("/api/products/999999"))
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
     }
 

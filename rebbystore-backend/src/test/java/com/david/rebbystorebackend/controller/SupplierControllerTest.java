@@ -2,19 +2,28 @@ package com.david.rebbystorebackend.controller;
 
 import com.david.rebbystorebackend.domain.entity.Supplier;
 import com.david.rebbystorebackend.repository.SupplierRepository;
+import com.david.rebbystorebackend.security.UserPrincipal;
+import com.david.rebbystorebackend.security.jwt.JwtService;
+import com.david.rebbystorebackend.security.service.CustomUserDetailsService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -27,19 +36,55 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class SupplierControllerTest {
 
+    private static final String STAFF_TOKEN = "staff-token";
+
     @Autowired
     private MockMvc mockMvc;
 
     @Autowired
     private SupplierRepository supplierRepository;
 
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private CustomUserDetailsService userDetailsService;
+
     @BeforeEach
     void setUp() {
         supplierRepository.deleteAll();
+
+        UserPrincipal staffPrincipal = UserPrincipal.createForTesting(
+                2L,
+                "staff",
+                "staff@rebbystore.co.tz",
+                "$2a$10$dummy",
+                true,
+                List.of(new SimpleGrantedAuthority("ROLE_STAFF"))
+        );
+
+        when(jwtService.isTokenValid(STAFF_TOKEN))
+                .thenReturn(true);
+
+        when(jwtService.extractUsername(STAFF_TOKEN))
+                .thenReturn(staffPrincipal.getUsername());
+
+        when(userDetailsService.loadUserByUsername("staff"))
+                .thenReturn(staffPrincipal);
+    }
+
+    private MockHttpServletRequestBuilder authenticated(
+            MockHttpServletRequestBuilder request
+    ) {
+        return request.header(
+                "Authorization",
+                "Bearer " + STAFF_TOKEN
+        );
     }
 
     @Test
     void shouldCreateSupplier() throws Exception {
+
         String requestBody = """
                 {
                   "name": "Beauty Hair Suppliers",
@@ -49,14 +94,22 @@ class SupplierControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/suppliers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody))
+        mockMvc.perform(
+                        authenticated(
+                                post("/api/suppliers")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
+                )
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.name").value("Beauty Hair Suppliers"))
-                .andExpect(jsonPath("$.phone").value("0712345678"))
-                .andExpect(jsonPath("$.email").value("beauty@example.com"))
-                .andExpect(jsonPath("$.address").value("Dar es Salaam"))
+                .andExpect(jsonPath("$.name")
+                        .value("Beauty Hair Suppliers"))
+                .andExpect(jsonPath("$.phone")
+                        .value("0712345678"))
+                .andExpect(jsonPath("$.email")
+                        .value("beauty@example.com"))
+                .andExpect(jsonPath("$.address")
+                        .value("Dar es Salaam"))
                 .andExpect(jsonPath("$.id").isNumber())
                 .andExpect(jsonPath("$.createdAt").exists())
                 .andExpect(jsonPath("$.updatedAt").exists());
@@ -64,6 +117,7 @@ class SupplierControllerTest {
 
     @Test
     void shouldGetSupplierById() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Mambo Hair",
                 "0711111111",
@@ -71,17 +125,27 @@ class SupplierControllerTest {
                 "Dar es Salaam"
         );
 
-        mockMvc.perform(get("/api/suppliers/{id}", supplier.getId()))
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/suppliers/{id}", supplier.getId())
+                        )
+                )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(supplier.getId()))
-                .andExpect(jsonPath("$.name").value("Mambo Hair"))
-                .andExpect(jsonPath("$.phone").value("0711111111"))
-                .andExpect(jsonPath("$.email").value("mambo@example.com"))
-                .andExpect(jsonPath("$.address").value("Dar es Salaam"));
+                .andExpect(jsonPath("$.id")
+                        .value(supplier.getId()))
+                .andExpect(jsonPath("$.name")
+                        .value("Mambo Hair"))
+                .andExpect(jsonPath("$.phone")
+                        .value("0711111111"))
+                .andExpect(jsonPath("$.email")
+                        .value("mambo@example.com"))
+                .andExpect(jsonPath("$.address")
+                        .value("Dar es Salaam"));
     }
 
     @Test
     void shouldGetSupplierByName() throws Exception {
+
         createSupplier(
                 "Premium Wigs",
                 "0722222222",
@@ -89,14 +153,21 @@ class SupplierControllerTest {
                 "Arusha"
         );
 
-        mockMvc.perform(get("/api/suppliers/name/{name}", "Premium Wigs"))
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/suppliers/name/{name}", "Premium Wigs")
+                        )
+                )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value("Premium Wigs"))
-                .andExpect(jsonPath("$.phone").value("0722222222"));
+                .andExpect(jsonPath("$.name")
+                        .value("Premium Wigs"))
+                .andExpect(jsonPath("$.phone")
+                        .value("0722222222"));
     }
 
     @Test
     void shouldGetAllSuppliersOrderedByName() throws Exception {
+
         createSupplier(
                 "Zulu Hair",
                 "0733333333",
@@ -111,15 +182,22 @@ class SupplierControllerTest {
                 "Dodoma"
         );
 
-        mockMvc.perform(get("/api/suppliers"))
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/suppliers")
+                        )
+                )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[0].name").value("Alpha Hair"))
-                .andExpect(jsonPath("$[1].name").value("Zulu Hair"));
+                .andExpect(jsonPath("$[0].name")
+                        .value("Alpha Hair"))
+                .andExpect(jsonPath("$[1].name")
+                        .value("Zulu Hair"));
     }
 
     @Test
     void shouldUpdateSupplier() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Old Supplier",
                 "0755555555",
@@ -136,18 +214,27 @@ class SupplierControllerTest {
                 }
                 """;
 
-        mockMvc.perform(put("/api/suppliers/{id}", supplier.getId())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody))
+        mockMvc.perform(
+                        authenticated(
+                                put("/api/suppliers/{id}", supplier.getId())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
+                )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value("Updated Supplier"))
-                .andExpect(jsonPath("$.phone").value("0756789012"))
-                .andExpect(jsonPath("$.email").value("updated@example.com"))
-                .andExpect(jsonPath("$.address").value("Dodoma"));
+                .andExpect(jsonPath("$.name")
+                        .value("Updated Supplier"))
+                .andExpect(jsonPath("$.phone")
+                        .value("0756789012"))
+                .andExpect(jsonPath("$.email")
+                        .value("updated@example.com"))
+                .andExpect(jsonPath("$.address")
+                        .value("Dodoma"));
     }
 
     @Test
     void shouldDeleteSupplier() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Delete Me",
                 "0766666666",
@@ -155,15 +242,24 @@ class SupplierControllerTest {
                 "Dar es Salaam"
         );
 
-        mockMvc.perform(delete("/api/suppliers/{id}", supplier.getId()))
+        mockMvc.perform(
+                        authenticated(
+                                delete("/api/suppliers/{id}", supplier.getId())
+                        )
+                )
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/api/suppliers/{id}", supplier.getId()))
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/suppliers/{id}", supplier.getId())
+                        )
+                )
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void shouldRejectInvalidCreateRequest() throws Exception {
+
         String requestBody = """
                 {
                   "name": "",
@@ -173,9 +269,13 @@ class SupplierControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/suppliers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody))
+        mockMvc.perform(
+                        authenticated(
+                                post("/api/suppliers")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
+                )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.name").exists())
                 .andExpect(jsonPath("$.fieldErrors.phone").exists())
@@ -184,6 +284,7 @@ class SupplierControllerTest {
 
     @Test
     void shouldRejectDuplicateSupplierName() throws Exception {
+
         createSupplier(
                 "Unique Supplier",
                 "0777777777",
@@ -200,17 +301,28 @@ class SupplierControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/suppliers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody))
+        mockMvc.perform(
+                        authenticated(
+                                post("/api/suppliers")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
+                )
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message")
-                        .value("Supplier with name 'Unique Supplier' already exists"));
+                        .value(
+                                "Supplier with name 'Unique Supplier' already exists"
+                        ));
     }
 
     @Test
     void shouldReturnNotFoundWhenSupplierDoesNotExist() throws Exception {
-        mockMvc.perform(get("/api/suppliers/{id}", 999999L))
+
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/suppliers/{id}", 999999L)
+                        )
+                )
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message")
                         .value("Supplier with id 999999 not found"));
@@ -218,14 +330,25 @@ class SupplierControllerTest {
 
     @Test
     void shouldReturnNotFoundWhenSupplierNameDoesNotExist() throws Exception {
-        mockMvc.perform(get("/api/suppliers/name/{name}", "Missing Supplier"))
+
+        mockMvc.perform(
+                        authenticated(
+                                get(
+                                        "/api/suppliers/name/{name}",
+                                        "Missing Supplier"
+                                )
+                        )
+                )
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message")
-                        .value("Supplier with name 'Missing Supplier' not found"));
+                        .value(
+                                "Supplier with name 'Missing Supplier' not found"
+                        ));
     }
 
     @Test
     void shouldAllowOptionalContactFields() throws Exception {
+
         String requestBody = """
                 {
                   "name": "No Contact Supplier",
@@ -235,14 +358,22 @@ class SupplierControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/suppliers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody))
+        mockMvc.perform(
+                        authenticated(
+                                post("/api/suppliers")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
+                )
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.name").value("No Contact Supplier"))
-                .andExpect(jsonPath("$.phone").value(is((String) null)))
-                .andExpect(jsonPath("$.email").value(is((String) null)))
-                .andExpect(jsonPath("$.address").value(is((String) null)));
+                .andExpect(jsonPath("$.name")
+                        .value("No Contact Supplier"))
+                .andExpect(jsonPath("$.phone")
+                        .value(is((String) null)))
+                .andExpect(jsonPath("$.email")
+                        .value(is((String) null)))
+                .andExpect(jsonPath("$.address")
+                        .value(is((String) null)));
     }
 
     private Supplier createSupplier(

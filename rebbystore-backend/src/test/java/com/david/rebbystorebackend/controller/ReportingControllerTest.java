@@ -15,19 +15,28 @@ import com.david.rebbystorebackend.repository.OrderRepository;
 import com.david.rebbystorebackend.repository.ProductRepository;
 import com.david.rebbystorebackend.repository.PurchaseRepository;
 import com.david.rebbystorebackend.repository.SupplierRepository;
+import com.david.rebbystorebackend.security.UserPrincipal;
+import com.david.rebbystorebackend.security.jwt.JwtService;
+import com.david.rebbystorebackend.security.service.CustomUserDetailsService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -36,6 +45,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 class ReportingControllerTest {
+
+    private static final String STAFF_TOKEN = "staff-token";
 
     @Autowired
     private MockMvc mockMvc;
@@ -58,6 +69,12 @@ class ReportingControllerTest {
     @Autowired
     private CategoryRepository categoryRepository;
 
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private CustomUserDetailsService userDetailsService;
+
     @BeforeEach
     void setUp() {
         orderRepository.deleteAll();
@@ -66,10 +83,38 @@ class ReportingControllerTest {
         customerRepository.deleteAll();
         supplierRepository.deleteAll();
         categoryRepository.deleteAll();
+
+        UserPrincipal staffPrincipal = UserPrincipal.createForTesting(
+                2L,
+                "staff",
+                "staff@rebbystore.co.tz",
+                "$2a$10$dummy",
+                true,
+                List.of(new SimpleGrantedAuthority("ROLE_STAFF"))
+        );
+
+        when(jwtService.isTokenValid(STAFF_TOKEN))
+                .thenReturn(true);
+
+        when(jwtService.extractUsername(STAFF_TOKEN))
+                .thenReturn(staffPrincipal.getUsername());
+
+        when(userDetailsService.loadUserByUsername("staff"))
+                .thenReturn(staffPrincipal);
+    }
+
+    private MockHttpServletRequestBuilder authenticated(
+            MockHttpServletRequestBuilder request
+    ) {
+        return request.header(
+                "Authorization",
+                "Bearer " + STAFF_TOKEN
+        );
     }
 
     @Test
     void shouldReturnSalesSummary() throws Exception {
+
         Customer customer = createCustomer(
                 "Sales Customer",
                 "0712345678",
@@ -97,7 +142,11 @@ class ReportingControllerTest {
                 new BigDecimal("100000.00")
         );
 
-        mockMvc.perform(get("/api/reporting/sales"))
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/reporting/sales")
+                        )
+                )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.deliveredOrders").value(2))
                 .andExpect(jsonPath("$.totalRevenue").value(500000.00))
@@ -108,7 +157,11 @@ class ReportingControllerTest {
     void shouldReturnZeroSalesWhenThereAreNoDeliveredOrders()
             throws Exception {
 
-        mockMvc.perform(get("/api/reporting/sales"))
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/reporting/sales")
+                        )
+                )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.deliveredOrders").value(0))
                 .andExpect(jsonPath("$.totalRevenue").value(0))
@@ -117,6 +170,7 @@ class ReportingControllerTest {
 
     @Test
     void shouldReturnOrderSummary() throws Exception {
+
         Customer customer = createCustomer(
                 "Order Customer",
                 "0723456789",
@@ -165,7 +219,11 @@ class ReportingControllerTest {
                 new BigDecimal("160000.00")
         );
 
-        mockMvc.perform(get("/api/reporting/orders"))
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/reporting/orders")
+                        )
+                )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.pending").value(1))
                 .andExpect(jsonPath("$.confirmed").value(1))
@@ -178,6 +236,7 @@ class ReportingControllerTest {
 
     @Test
     void shouldReturnPurchaseSummary() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Reporting Supplier"
         );
@@ -203,7 +262,11 @@ class ReportingControllerTest {
                 new BigDecimal("100000.00")
         );
 
-        mockMvc.perform(get("/api/reporting/purchases"))
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/reporting/purchases")
+                        )
+                )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalPurchases").value(3))
                 .andExpect(jsonPath("$.receivedPurchases").value(1))
@@ -212,6 +275,7 @@ class ReportingControllerTest {
 
     @Test
     void shouldReturnInventorySummary() throws Exception {
+
         createProduct(
                 "Product One",
                 "REPORT-001",
@@ -233,7 +297,11 @@ class ReportingControllerTest {
                 5
         );
 
-        mockMvc.perform(get("/api/reporting/inventory"))
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/reporting/inventory")
+                        )
+                )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalProducts").value(3))
                 .andExpect(jsonPath("$.totalUnitsInStock").value(33))
@@ -242,6 +310,7 @@ class ReportingControllerTest {
 
     @Test
     void shouldReturnCustomerSummary() throws Exception {
+
         Customer customerOne = createCustomer(
                 "Customer One",
                 "0745678901",
@@ -249,7 +318,9 @@ class ReportingControllerTest {
         );
 
         customerOne.setTotalOrders(3);
-        customerOne.setTotalSpent(new BigDecimal("450000.00"));
+        customerOne.setTotalSpent(
+                new BigDecimal("450000.00")
+        );
         customerRepository.save(customerOne);
 
         Customer customerTwo = createCustomer(
@@ -259,10 +330,16 @@ class ReportingControllerTest {
         );
 
         customerTwo.setTotalOrders(2);
-        customerTwo.setTotalSpent(new BigDecimal("300000.00"));
+        customerTwo.setTotalSpent(
+                new BigDecimal("300000.00")
+        );
         customerRepository.save(customerTwo);
 
-        mockMvc.perform(get("/api/reporting/customers"))
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/reporting/customers")
+                        )
+                )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalCustomers").value(2))
                 .andExpect(jsonPath("$.totalOrders").value(5))

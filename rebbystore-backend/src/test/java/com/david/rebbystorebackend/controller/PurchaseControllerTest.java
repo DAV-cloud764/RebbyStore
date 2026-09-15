@@ -10,21 +10,29 @@ import com.david.rebbystorebackend.repository.ProductRepository;
 import com.david.rebbystorebackend.repository.PurchaseItemRepository;
 import com.david.rebbystorebackend.repository.PurchaseRepository;
 import com.david.rebbystorebackend.repository.SupplierRepository;
+import com.david.rebbystorebackend.security.UserPrincipal;
+import com.david.rebbystorebackend.security.jwt.JwtService;
+import com.david.rebbystorebackend.security.service.CustomUserDetailsService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
-
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -35,6 +43,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 class PurchaseControllerTest {
+
+    private static final String STAFF_TOKEN = "staff-token";
 
     @Autowired
     private MockMvc mockMvc;
@@ -54,6 +64,12 @@ class PurchaseControllerTest {
     @Autowired
     private ProductRepository productRepository;
 
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private CustomUserDetailsService userDetailsService;
+
     @BeforeEach
     void setUp() {
         purchaseItemRepository.deleteAll();
@@ -61,10 +77,38 @@ class PurchaseControllerTest {
         productRepository.deleteAll();
         supplierRepository.deleteAll();
         categoryRepository.deleteAll();
+
+        UserPrincipal staffPrincipal = UserPrincipal.createForTesting(
+                2L,
+                "staff",
+                "staff@rebbystore.co.tz",
+                "$2a$10$dummy",
+                true,
+                List.of(new SimpleGrantedAuthority("ROLE_STAFF"))
+        );
+
+        when(jwtService.isTokenValid(STAFF_TOKEN))
+                .thenReturn(true);
+
+        when(jwtService.extractUsername(STAFF_TOKEN))
+                .thenReturn(staffPrincipal.getUsername());
+
+        when(userDetailsService.loadUserByUsername("staff"))
+                .thenReturn(staffPrincipal);
+    }
+
+    private MockHttpServletRequestBuilder authenticated(
+            MockHttpServletRequestBuilder request
+    ) {
+        return request.header(
+                "Authorization",
+                "Bearer " + STAFF_TOKEN
+        );
     }
 
     @Test
     void shouldCreatePurchase() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Beauty Supplier",
                 "0712345678"
@@ -78,24 +122,33 @@ class PurchaseControllerTest {
                 }
                 """.formatted(supplier.getId());
 
-        mockMvc.perform(post("/api/purchases")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody))
+        mockMvc.perform(
+                        authenticated(
+                                post("/api/purchases")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
+                )
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNumber())
-                .andExpect(jsonPath("$.supplierId").value(supplier.getId()))
-                .andExpect(jsonPath("$.supplierName").value("Beauty Supplier"))
+                .andExpect(jsonPath("$.supplierId")
+                        .value(supplier.getId()))
+                .andExpect(jsonPath("$.supplierName")
+                        .value("Beauty Supplier"))
                 .andExpect(jsonPath("$.purchaseNumber").isString())
                 .andExpect(jsonPath("$.status").value("draft"))
-                .andExpect(jsonPath("$.purchaseDate").value("2026-09-10"))
+                .andExpect(jsonPath("$.purchaseDate")
+                        .value("2026-09-10"))
                 .andExpect(jsonPath("$.totalCost").value(0))
-                .andExpect(jsonPath("$.notes").value("Initial stock order"))
+                .andExpect(jsonPath("$.notes")
+                        .value("Initial stock order"))
                 .andExpect(jsonPath("$.createdAt").exists())
                 .andExpect(jsonPath("$.updatedAt").exists());
     }
 
     @Test
     void shouldGetPurchaseById() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Mambo Supplier",
                 "0723456789"
@@ -107,17 +160,26 @@ class PurchaseControllerTest {
                 "draft"
         );
 
-        mockMvc.perform(get("/api/purchases/{id}", purchase.getId()))
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/purchases/{id}", purchase.getId())
+                        )
+                )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(purchase.getId()))
-                .andExpect(jsonPath("$.supplierId").value(supplier.getId()))
-                .andExpect(jsonPath("$.supplierName").value("Mambo Supplier"))
-                .andExpect(jsonPath("$.purchaseNumber").value("PUR-TEST01"))
-                .andExpect(jsonPath("$.status").value("draft"));
+                .andExpect(jsonPath("$.supplierId")
+                        .value(supplier.getId()))
+                .andExpect(jsonPath("$.supplierName")
+                        .value("Mambo Supplier"))
+                .andExpect(jsonPath("$.purchaseNumber")
+                        .value("PUR-TEST01"))
+                .andExpect(jsonPath("$.status")
+                        .value("draft"));
     }
 
     @Test
     void shouldGetPurchaseByNumber() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Premium Supplier",
                 "0734567890"
@@ -130,8 +192,12 @@ class PurchaseControllerTest {
         );
 
         mockMvc.perform(
-                        get("/api/purchases/number/{purchaseNumber}",
-                                "PUR-NUMBER1")
+                        authenticated(
+                                get(
+                                        "/api/purchases/number/{purchaseNumber}",
+                                        "PUR-NUMBER1"
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.purchaseNumber")
@@ -142,6 +208,7 @@ class PurchaseControllerTest {
 
     @Test
     void shouldGetPurchasesBySupplier() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Supplier A",
                 "0745678901"
@@ -160,8 +227,12 @@ class PurchaseControllerTest {
         );
 
         mockMvc.perform(
-                        get("/api/purchases/supplier/{supplierId}",
-                                supplier.getId())
+                        authenticated(
+                                get(
+                                        "/api/purchases/supplier/{supplierId}",
+                                        supplier.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)));
@@ -169,6 +240,7 @@ class PurchaseControllerTest {
 
     @Test
     void shouldGetPurchasesByStatus() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Supplier Status",
                 "0756789012"
@@ -187,7 +259,12 @@ class PurchaseControllerTest {
         );
 
         mockMvc.perform(
-                        get("/api/purchases/status/{status}", "ordered")
+                        authenticated(
+                                get(
+                                        "/api/purchases/status/{status}",
+                                        "ordered"
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -199,6 +276,7 @@ class PurchaseControllerTest {
 
     @Test
     void shouldAddPurchaseItemAndCalculateTotal() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Item Supplier",
                 "0767890123"
@@ -225,9 +303,14 @@ class PurchaseControllerTest {
                 """.formatted(product.getId());
 
         mockMvc.perform(
-                        post("/api/purchases/{id}/items", purchase.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/purchases/{id}/items",
+                                        purchase.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").isNumber())
@@ -238,11 +321,18 @@ class PurchaseControllerTest {
                 .andExpect(jsonPath("$.sku")
                         .value("WIG-001"))
                 .andExpect(jsonPath("$.quantity").value(3))
-                .andExpect(jsonPath("$.unitCost").value(50000.00))
-                .andExpect(jsonPath("$.subtotal").value(150000.00));
+                .andExpect(jsonPath("$.unitCost")
+                        .value(50000.00))
+                .andExpect(jsonPath("$.subtotal")
+                        .value(150000.00));
 
         mockMvc.perform(
-                        get("/api/purchases/{id}", purchase.getId())
+                        authenticated(
+                                get(
+                                        "/api/purchases/{id}",
+                                        purchase.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalCost")
@@ -251,6 +341,7 @@ class PurchaseControllerTest {
 
     @Test
     void shouldGetPurchaseItems() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Items Supplier",
                 "0778901234"
@@ -276,20 +367,25 @@ class PurchaseControllerTest {
         );
 
         mockMvc.perform(
-                        get("/api/purchases/{id}/items", purchase.getId())
+                        authenticated(
+                                get(
+                                        "/api/purchases/{id}/items",
+                                        purchase.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].productId")
                         .value(product.getId()))
-                .andExpect(jsonPath("$[0].quantity")
-                        .value(2))
+                .andExpect(jsonPath("$[0].quantity").value(2))
                 .andExpect(jsonPath("$[0].subtotal")
                         .value(150000.00));
     }
 
     @Test
     void shouldRemovePurchaseItem() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Remove Supplier",
                 "0711111111"
@@ -315,12 +411,22 @@ class PurchaseControllerTest {
         );
 
         mockMvc.perform(
-                        delete("/api/purchases/items/{itemId}", itemId)
+                        authenticated(
+                                delete(
+                                        "/api/purchases/items/{itemId}",
+                                        itemId
+                                )
+                        )
                 )
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(
-                        get("/api/purchases/{id}/items", purchase.getId())
+                        authenticated(
+                                get(
+                                        "/api/purchases/{id}/items",
+                                        purchase.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));
@@ -328,6 +434,7 @@ class PurchaseControllerTest {
 
     @Test
     void shouldOrderPurchase() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Order Supplier",
                 "0722222222"
@@ -353,8 +460,12 @@ class PurchaseControllerTest {
         );
 
         mockMvc.perform(
-                        post("/api/purchases/{id}/order",
-                                purchase.getId())
+                        authenticated(
+                                post(
+                                        "/api/purchases/{id}/order",
+                                        purchase.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status")
@@ -365,6 +476,7 @@ class PurchaseControllerTest {
 
     @Test
     void shouldReceivePurchaseAndIncreaseStock() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Receive Supplier",
                 "0733333333"
@@ -390,16 +502,24 @@ class PurchaseControllerTest {
         );
 
         mockMvc.perform(
-                        post("/api/purchases/{id}/order",
-                                purchase.getId())
+                        authenticated(
+                                post(
+                                        "/api/purchases/{id}/order",
+                                        purchase.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status")
                         .value("ordered"));
 
         mockMvc.perform(
-                        post("/api/purchases/{id}/receive",
-                                purchase.getId())
+                        authenticated(
+                                post(
+                                        "/api/purchases/{id}/receive",
+                                        purchase.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status")
@@ -417,6 +537,7 @@ class PurchaseControllerTest {
 
     @Test
     void shouldCancelDraftPurchase() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Cancel Supplier",
                 "0744444444"
@@ -429,8 +550,12 @@ class PurchaseControllerTest {
         );
 
         mockMvc.perform(
-                        post("/api/purchases/{id}/cancel",
-                                purchase.getId())
+                        authenticated(
+                                post(
+                                        "/api/purchases/{id}/cancel",
+                                        purchase.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status")
@@ -439,6 +564,7 @@ class PurchaseControllerTest {
 
     @Test
     void shouldRejectOrderingPurchaseWithoutItems() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Empty Supplier",
                 "0755555555"
@@ -451,8 +577,12 @@ class PurchaseControllerTest {
         );
 
         mockMvc.perform(
-                        post("/api/purchases/{id}/order",
-                                purchase.getId())
+                        authenticated(
+                                post(
+                                        "/api/purchases/{id}/order",
+                                        purchase.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message")
@@ -461,6 +591,7 @@ class PurchaseControllerTest {
 
     @Test
     void shouldRejectAddingItemToOrderedPurchase() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Ordered Supplier",
                 "0766666666"
@@ -487,16 +618,21 @@ class PurchaseControllerTest {
                 """.formatted(product.getId());
 
         mockMvc.perform(
-                        post("/api/purchases/{id}/items",
-                                purchase.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/purchases/{id}/items",
+                                        purchase.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void shouldRejectInvalidItemRequest() throws Exception {
+
         Supplier supplier = createSupplier(
                 "Validation Supplier",
                 "0777777777"
@@ -517,10 +653,14 @@ class PurchaseControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/purchases/{id}/items",
-                                purchase.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/purchases/{id}/items",
+                                        purchase.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.productId")
@@ -533,8 +673,14 @@ class PurchaseControllerTest {
 
     @Test
     void shouldReturnNotFoundForMissingPurchase() throws Exception {
+
         mockMvc.perform(
-                        get("/api/purchases/{id}", 999999L)
+                        authenticated(
+                                get(
+                                        "/api/purchases/{id}",
+                                        999999L
+                                )
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message")
@@ -543,6 +689,7 @@ class PurchaseControllerTest {
 
     @Test
     void shouldRejectInvalidCreateRequest() throws Exception {
+
         String requestBody = """
                 {
                   "supplierId": null,
@@ -552,9 +699,11 @@ class PurchaseControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/purchases")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post("/api/purchases")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.supplierId")
@@ -588,7 +737,9 @@ class PurchaseControllerTest {
         purchase.setSupplier(supplier);
         purchase.setPurchaseNumber(purchaseNumber);
         purchase.setStatus(status);
-        purchase.setPurchaseDate(LocalDate.of(2026, 9, 10));
+        purchase.setPurchaseDate(
+                LocalDate.of(2026, 9, 10)
+        );
         purchase.setTotalCost(BigDecimal.ZERO);
         purchase.setCreatedAt(OffsetDateTime.now());
         purchase.setUpdatedAt(OffsetDateTime.now());
@@ -660,9 +811,14 @@ class PurchaseControllerTest {
         );
 
         String response = mockMvc.perform(
-                        post("/api/purchases/{id}/items", purchaseId)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/purchases/{id}/items",
+                                        purchaseId
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isOk())
                 .andReturn()

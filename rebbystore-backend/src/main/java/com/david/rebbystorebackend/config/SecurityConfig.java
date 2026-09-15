@@ -3,6 +3,7 @@ package com.david.rebbystorebackend.config;
 import com.david.rebbystorebackend.security.jwt.JwtProperties;
 import com.david.rebbystorebackend.security.jwt.JwtAuthenticationFilter;
 import com.david.rebbystorebackend.security.service.CustomUserDetailsService;
+import org.springframework.http.HttpMethod;
 
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.web.AuthenticationEntryPoint;
@@ -71,6 +72,8 @@ public class SecurityConfig {
                                 "/api/categories/**"
                         ).permitAll()
 
+                                .requestMatchers("/test/**").permitAll()
+
                         .requestMatchers("/api/inventory/**")
                         .hasAnyRole("ADMIN", "STAFF")
 
@@ -86,8 +89,65 @@ public class SecurityConfig {
                         .requestMatchers("/api/reporting/**")
                         .hasAnyRole("ADMIN", "STAFF")
 
-                        .requestMatchers("/api/orders/**")
-                        .hasAnyRole("ADMIN", "STAFF", "CUSTOMER")
+                                .requestMatchers(
+                                        HttpMethod.GET,
+                                        "/api/orders/status/**"
+                                )
+                                .hasAnyRole("ADMIN", "STAFF")
+
+                                .requestMatchers(
+                                        HttpMethod.GET,
+                                        "/api/orders/**"
+                                )
+                                .hasAnyRole("ADMIN", "STAFF", "CUSTOMER")
+
+                                // Customer can create an order.
+                                .requestMatchers(
+                                        org.springframework.http.HttpMethod.POST,
+                                        "/api/orders"
+                                )
+                                .hasAnyRole("ADMIN", "STAFF", "CUSTOMER")
+
+// Customer can add an item to their own pending order.
+                                .requestMatchers(
+                                        org.springframework.http.HttpMethod.POST,
+                                        "/api/orders/*/items"
+                                )
+                                .hasAnyRole("ADMIN", "STAFF", "CUSTOMER")
+
+// Customer can remove an item from their own pending order.
+                                .requestMatchers(
+                                        org.springframework.http.HttpMethod.DELETE,
+                                        "/api/orders/items/*"
+                                )
+                                .hasAnyRole("ADMIN", "STAFF", "CUSTOMER")
+
+// Customer can read orders, but ownership must be checked
+// in the service layer.
+                                .requestMatchers(
+                                        org.springframework.http.HttpMethod.GET,
+                                        "/api/orders/**"
+                                )
+                                .hasAnyRole("ADMIN", "STAFF", "CUSTOMER")
+
+// Workflow transitions belong to staff/admin.
+                                .requestMatchers(
+                                        org.springframework.http.HttpMethod.POST,
+                                        "/api/orders/*/confirm",
+                                        "/api/orders/*/process",
+                                        "/api/orders/*/ready-for-delivery",
+                                        "/api/orders/*/deliver"
+                                )
+                                .hasAnyRole("ADMIN", "STAFF")
+
+// Cancellation requires ownership for customers.
+// We will enforce that in the service layer.
+                                .requestMatchers(
+                                        org.springframework.http.HttpMethod.POST,
+                                        "/api/orders/*/cancel"
+                                )
+
+                                .hasAnyRole("ADMIN", "STAFF", "CUSTOMER")
 
                         .anyRequest().authenticated()
                 )

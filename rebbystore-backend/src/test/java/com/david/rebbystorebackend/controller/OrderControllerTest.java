@@ -13,20 +13,28 @@ import com.david.rebbystorebackend.repository.CustomerRepository;
 import com.david.rebbystorebackend.repository.OrderItemRepository;
 import com.david.rebbystorebackend.repository.OrderRepository;
 import com.david.rebbystorebackend.repository.ProductRepository;
+import com.david.rebbystorebackend.security.service.CustomUserDetailsService;
+import com.david.rebbystorebackend.security.UserPrincipal;
+import com.david.rebbystorebackend.security.jwt.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -37,6 +45,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 class OrderControllerTest {
+
+    private static final String STAFF_TOKEN = "staff-token";
 
     @Autowired
     private MockMvc mockMvc;
@@ -56,6 +66,12 @@ class OrderControllerTest {
     @Autowired
     private CategoryRepository categoryRepository;
 
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private CustomUserDetailsService userDetailsService;
+
     @BeforeEach
     void setUp() {
         orderItemRepository.deleteAll();
@@ -63,6 +79,33 @@ class OrderControllerTest {
         productRepository.deleteAll();
         customerRepository.deleteAll();
         categoryRepository.deleteAll();
+
+        UserPrincipal staffPrincipal = UserPrincipal.createForTesting(
+                2L,
+                "staff",
+                "staff@rebbystore.co.tz",
+                "$2a$10$dummy",
+                true,
+                List.of(new SimpleGrantedAuthority("ROLE_STAFF"))
+        );
+
+        when(jwtService.isTokenValid(STAFF_TOKEN))
+                .thenReturn(true);
+
+        when(jwtService.extractUsername(STAFF_TOKEN))
+                .thenReturn(staffPrincipal.getUsername());
+
+        when(userDetailsService.loadUserByUsername("staff"))
+                .thenReturn(staffPrincipal);
+    }
+
+    private MockHttpServletRequestBuilder authenticated(
+            MockHttpServletRequestBuilder request
+    ) {
+        return request.header(
+                "Authorization",
+                "Bearer " + STAFF_TOKEN
+        );
     }
 
     @Test
@@ -84,9 +127,13 @@ class OrderControllerTest {
                 }
                 """.formatted(customer.getId());
 
-        mockMvc.perform(post("/api/orders")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody))
+        mockMvc.perform(
+                        authenticated(
+                                post("/api/orders")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
+                )
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNumber())
                 .andExpect(jsonPath("$.customerId").value(customer.getId()))
@@ -122,7 +169,11 @@ class OrderControllerTest {
                 OrderStatus.PENDING
         );
 
-        mockMvc.perform(get("/api/orders/{id}", order.getId()))
+        mockMvc.perform(
+                        authenticated(
+                                get("/api/orders/{id}", order.getId())
+                        )
+                )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(order.getId()))
                 .andExpect(jsonPath("$.customerId").value(customer.getId()))
@@ -146,8 +197,12 @@ class OrderControllerTest {
         );
 
         mockMvc.perform(
-                        get("/api/orders/number/{orderNumber}",
-                                "ORD-NUMBER1")
+                        authenticated(
+                                get(
+                                        "/api/orders/number/{orderNumber}",
+                                        "ORD-NUMBER1"
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.orderNumber")
@@ -177,8 +232,12 @@ class OrderControllerTest {
         );
 
         mockMvc.perform(
-                        get("/api/orders/customer/{customerId}",
-                                customer.getId())
+                        authenticated(
+                                get(
+                                        "/api/orders/customer/{customerId}",
+                                        customer.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)));
@@ -205,8 +264,12 @@ class OrderControllerTest {
         );
 
         mockMvc.perform(
-                        get("/api/orders/status/{status}",
-                                "CONFIRMED")
+                        authenticated(
+                                get(
+                                        "/api/orders/status/{status}",
+                                        "CONFIRMED"
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -245,9 +308,11 @@ class OrderControllerTest {
                 """.formatted(product.getId());
 
         mockMvc.perform(
-                        post("/api/orders/{id}/items", order.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post("/api/orders/{id}/items", order.getId())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").isNumber())
@@ -262,7 +327,9 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.subtotal").value(150000.00));
 
         mockMvc.perform(
-                        get("/api/orders/{id}", order.getId())
+                        authenticated(
+                                get("/api/orders/{id}", order.getId())
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.subtotal")
@@ -297,7 +364,9 @@ class OrderControllerTest {
         addItem(order.getId(), product.getId(), 1);
 
         mockMvc.perform(
-                        get("/api/orders/{id}", order.getId())
+                        authenticated(
+                                get("/api/orders/{id}", order.getId())
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.subtotal")
@@ -332,7 +401,9 @@ class OrderControllerTest {
         addItem(order.getId(), product.getId(), 2);
 
         mockMvc.perform(
-                        get("/api/orders/{id}/items", order.getId())
+                        authenticated(
+                                get("/api/orders/{id}/items", order.getId())
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -376,12 +447,22 @@ class OrderControllerTest {
         );
 
         mockMvc.perform(
-                        delete("/api/orders/items/{itemId}", itemId)
+                        authenticated(
+                                delete(
+                                        "/api/orders/items/{itemId}",
+                                        itemId
+                                )
+                        )
                 )
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(
-                        get("/api/orders/{id}/items", order.getId())
+                        authenticated(
+                                get(
+                                        "/api/orders/{id}/items",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));
@@ -411,7 +492,12 @@ class OrderControllerTest {
         addItem(order.getId(), product.getId(), 3);
 
         mockMvc.perform(
-                        post("/api/orders/{id}/confirm", order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/confirm",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status")
@@ -451,14 +537,24 @@ class OrderControllerTest {
         addItem(order.getId(), product.getId(), 1);
 
         mockMvc.perform(
-                        post("/api/orders/{id}/confirm", order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/confirm",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status")
                         .value("CONFIRMED"));
 
         mockMvc.perform(
-                        post("/api/orders/{id}/process", order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/process",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status")
@@ -480,8 +576,12 @@ class OrderControllerTest {
         );
 
         mockMvc.perform(
-                        post("/api/orders/{id}/ready-for-delivery",
-                                order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/ready-for-delivery",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status")
@@ -514,26 +614,42 @@ class OrderControllerTest {
         addItem(order.getId(), product.getId(), 2);
 
         mockMvc.perform(
-                        post("/api/orders/{id}/confirm",
-                                order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/confirm",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk());
 
         mockMvc.perform(
-                        post("/api/orders/{id}/process",
-                                order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/process",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk());
 
         mockMvc.perform(
-                        post("/api/orders/{id}/ready-for-delivery",
-                                order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/ready-for-delivery",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk());
 
         mockMvc.perform(
-                        post("/api/orders/{id}/deliver",
-                                order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/deliver",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status")
@@ -580,8 +696,12 @@ class OrderControllerTest {
         addItem(order.getId(), product.getId(), 3);
 
         mockMvc.perform(
-                        post("/api/orders/{id}/cancel",
-                                order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/cancel",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status")
@@ -623,8 +743,12 @@ class OrderControllerTest {
         addItem(order.getId(), product.getId(), 4);
 
         mockMvc.perform(
-                        post("/api/orders/{id}/confirm",
-                                order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/confirm",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk());
 
@@ -638,8 +762,12 @@ class OrderControllerTest {
         );
 
         mockMvc.perform(
-                        post("/api/orders/{id}/cancel",
-                                order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/cancel",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status")
@@ -672,8 +800,12 @@ class OrderControllerTest {
         );
 
         mockMvc.perform(
-                        post("/api/orders/{id}/confirm",
-                                order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/confirm",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message")
@@ -712,15 +844,22 @@ class OrderControllerTest {
                 """.formatted(product.getId());
 
         mockMvc.perform(
-                        post("/api/orders/{id}/items", order.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/items",
+                                        order.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message")
-                        .value("Product with id " +
-                                product.getId() +
-                                " is not active"));
+                        .value(
+                                "Product with id " +
+                                        product.getId() +
+                                        " is not active"
+                        ));
     }
 
     @Test
@@ -752,13 +891,20 @@ class OrderControllerTest {
                 """.formatted(product.getId());
 
         mockMvc.perform(
-                        post("/api/orders/{id}/items", order.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/items",
+                                        order.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message")
-                        .value("Insufficient stock for product with SKU 'WIG-STOCK01'"));
+                        .value(
+                                "Insufficient stock for product with SKU 'WIG-STOCK01'"
+                        ));
     }
 
     @Test
@@ -775,9 +921,11 @@ class OrderControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/orders")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post("/api/orders")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.customerId")
@@ -814,9 +962,14 @@ class OrderControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/orders/{id}/items", order.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/items",
+                                        order.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.productId")
@@ -840,8 +993,12 @@ class OrderControllerTest {
         );
 
         mockMvc.perform(
-                        post("/api/orders/{id}/process",
-                                order.getId())
+                        authenticated(
+                                post(
+                                        "/api/orders/{id}/process",
+                                        order.getId()
+                                )
+                        )
                 )
                 .andExpect(status().isBadRequest());
     }
@@ -849,7 +1006,9 @@ class OrderControllerTest {
     @Test
     void shouldReturnBadRequestForMissingOrder() throws Exception {
         mockMvc.perform(
-                        get("/api/orders/{id}", 999999L)
+                        authenticated(
+                                get("/api/orders/{id}", 999999L)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message")
@@ -967,9 +1126,11 @@ class OrderControllerTest {
         );
 
         String response = mockMvc.perform(
-                        post("/api/orders/{id}/items", orderId)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post("/api/orders/{id}/items", orderId)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isOk())
                 .andReturn()

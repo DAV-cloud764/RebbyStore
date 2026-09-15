@@ -2,19 +2,27 @@ package com.david.rebbystorebackend.controller;
 
 import com.david.rebbystorebackend.domain.entity.Customer;
 import com.david.rebbystorebackend.repository.CustomerRepository;
+import com.david.rebbystorebackend.security.UserPrincipal;
+import com.david.rebbystorebackend.security.jwt.JwtService;
+import com.david.rebbystorebackend.security.service.CustomUserDetailsService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -26,11 +34,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class CustomerControllerTest {
 
+    private static final String STAFF_TOKEN = "staff-token";
+
     @Autowired
     private MockMvc mockMvc;
 
     @Autowired
     private CustomerRepository customerRepository;
+
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private CustomUserDetailsService userDetailsService;
 
     private Customer customer;
 
@@ -41,10 +57,38 @@ class CustomerControllerTest {
                 "0712345678",
                 "david@example.com"
         );
+
+        UserPrincipal staffPrincipal = UserPrincipal.createForTesting(
+                2L,
+                "staff",
+                "staff@rebbystore.co.tz",
+                "$2a$10$dummy",
+                true,
+                List.of(new SimpleGrantedAuthority("ROLE_STAFF"))
+        );
+
+        when(jwtService.isTokenValid(STAFF_TOKEN))
+                .thenReturn(true);
+
+        when(jwtService.extractUsername(STAFF_TOKEN))
+                .thenReturn(staffPrincipal.getUsername());
+
+        when(userDetailsService.loadUserByUsername("staff"))
+                .thenReturn(staffPrincipal);
+    }
+
+    private MockHttpServletRequestBuilder authenticated(
+            MockHttpServletRequestBuilder request
+    ) {
+        return request.header(
+                "Authorization",
+                "Bearer " + STAFF_TOKEN
+        );
     }
 
     @Test
     void shouldCreateCustomer() throws Exception {
+
         String requestBody = """
                 {
                   "fullName": "John Doe",
@@ -54,9 +98,11 @@ class CustomerControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/customers")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post("/api/customers")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").exists())
@@ -71,49 +117,66 @@ class CustomerControllerTest {
 
     @Test
     void shouldGetCustomerById() throws Exception {
+
         mockMvc.perform(
-                        get("/api/customers/{id}", customer.getId())
+                        authenticated(
+                                get("/api/customers/{id}", customer.getId())
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(customer.getId()))
                 .andExpect(jsonPath("$.fullName")
                         .value("David Philanthropist"))
                 .andExpect(jsonPath("$.phone").value("0712345678"))
-                .andExpect(jsonPath("$.email").value("david@example.com"))
+                .andExpect(jsonPath("$.email")
+                        .value("david@example.com"))
                 .andExpect(jsonPath("$.totalOrders").value(0))
                 .andExpect(jsonPath("$.totalSpent").value(0));
     }
 
     @Test
     void shouldGetCustomerByPhone() throws Exception {
+
         mockMvc.perform(
-                        get("/api/customers/phone/{phone}",
-                                "+255712345678")
+                        authenticated(
+                                get(
+                                        "/api/customers/phone/{phone}",
+                                        "+255712345678"
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(customer.getId()))
                 .andExpect(jsonPath("$.fullName")
                         .value("David Philanthropist"))
                 .andExpect(jsonPath("$.phone").value("0712345678"))
-                .andExpect(jsonPath("$.email").value("david@example.com"));
+                .andExpect(jsonPath("$.email")
+                        .value("david@example.com"));
     }
 
     @Test
     void shouldGetCustomerByEmail() throws Exception {
+
         mockMvc.perform(
-                        get("/api/customers/email/{email}",
-                                "DAVID@EXAMPLE.COM")
+                        authenticated(
+                                get(
+                                        "/api/customers/email/{email}",
+                                        "DAVID@EXAMPLE.COM"
+                                )
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(customer.getId()))
                 .andExpect(jsonPath("$.fullName")
                         .value("David Philanthropist"))
                 .andExpect(jsonPath("$.phone").value("0712345678"))
-                .andExpect(jsonPath("$.email").value("david@example.com"));
+                .andExpect(jsonPath("$.email")
+                        .value("david@example.com"));
     }
 
     @Test
     void shouldUpdateCustomer() throws Exception {
+
         String requestBody = """
                 {
                   "fullName": "David Updated",
@@ -123,15 +186,22 @@ class CustomerControllerTest {
                 """;
 
         mockMvc.perform(
-                        put("/api/customers/{id}", customer.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                put(
+                                        "/api/customers/{id}",
+                                        customer.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(customer.getId()))
-                .andExpect(jsonPath("$.fullName").value("David Updated"))
+                .andExpect(jsonPath("$.fullName")
+                        .value("David Updated"))
                 .andExpect(jsonPath("$.phone").value("0713456789"))
-                .andExpect(jsonPath("$.email").value("updated@example.com"))
+                .andExpect(jsonPath("$.email")
+                        .value("updated@example.com"))
                 .andExpect(jsonPath("$.totalOrders").value(0))
                 .andExpect(jsonPath("$.totalSpent").value(0))
                 .andExpect(jsonPath("$.updatedAt").exists());
@@ -139,6 +209,7 @@ class CustomerControllerTest {
 
     @Test
     void shouldReturnBadRequestForInvalidRequest() throws Exception {
+
         String requestBody = """
                 {
                   "fullName": "",
@@ -148,16 +219,20 @@ class CustomerControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/customers")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post("/api/customers")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
-                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.error")
+                        .value("Bad Request"))
                 .andExpect(jsonPath("$.message")
                         .value("Request validation failed"))
-                .andExpect(jsonPath("$.path").value("/api/customers"))
+                .andExpect(jsonPath("$.path")
+                        .value("/api/customers"))
                 .andExpect(jsonPath("$.fieldErrors").exists())
                 .andExpect(jsonPath("$.fieldErrors.fullName").exists())
                 .andExpect(jsonPath("$.fieldErrors.phone").exists())
@@ -166,6 +241,7 @@ class CustomerControllerTest {
 
     @Test
     void shouldReturnConflictForDuplicatePhone() throws Exception {
+
         String requestBody = """
                 {
                   "fullName": "Another Customer",
@@ -175,21 +251,28 @@ class CustomerControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/customers")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post("/api/customers")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409))
-                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.error")
+                        .value("Conflict"))
                 .andExpect(jsonPath("$.message")
-                        .value("Customer with phone '0712345678' already exists"))
-                .andExpect(jsonPath("$.path").value("/api/customers"))
+                        .value(
+                                "Customer with phone '0712345678' already exists"
+                        ))
+                .andExpect(jsonPath("$.path")
+                        .value("/api/customers"))
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
     }
 
     @Test
     void shouldReturnConflictForDuplicateEmail() throws Exception {
+
         String requestBody = """
                 {
                   "fullName": "Another Customer",
@@ -199,67 +282,100 @@ class CustomerControllerTest {
                 """;
 
         mockMvc.perform(
-                        post("/api/customers")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                post("/api/customers")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409))
-                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.error")
+                        .value("Conflict"))
                 .andExpect(jsonPath("$.message")
-                        .value("Customer with email 'david@example.com' already exists"))
-                .andExpect(jsonPath("$.path").value("/api/customers"))
+                        .value(
+                                "Customer with email 'david@example.com' already exists"
+                        ))
+                .andExpect(jsonPath("$.path")
+                        .value("/api/customers"))
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
     }
 
     @Test
     void shouldReturnNotFoundForMissingCustomer() throws Exception {
+
         mockMvc.perform(
-                        get("/api/customers/{id}", 999999L)
+                        authenticated(
+                                get("/api/customers/{id}", 999999L)
+                        )
                 )
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.error")
+                        .value("Not Found"))
                 .andExpect(jsonPath("$.message")
                         .value("Customer with ID '999999' not found"))
-                .andExpect(jsonPath("$.path").value("/api/customers/999999"))
+                .andExpect(jsonPath("$.path")
+                        .value("/api/customers/999999"))
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
     }
 
     @Test
     void shouldReturnNotFoundForMissingPhone() throws Exception {
+
         mockMvc.perform(
-                        get("/api/customers/phone/{phone}",
-                                "0712345679")
+                        authenticated(
+                                get(
+                                        "/api/customers/phone/{phone}",
+                                        "0712345679"
+                                )
+                        )
                 )
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.error")
+                        .value("Not Found"))
                 .andExpect(jsonPath("$.message")
-                        .value("Customer with phone '0712345679' not found"))
+                        .value(
+                                "Customer with phone '0712345679' not found"
+                        ))
                 .andExpect(jsonPath("$.path")
-                        .value("/api/customers/phone/0712345679"))
+                        .value(
+                                "/api/customers/phone/0712345679"
+                        ))
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
     }
 
     @Test
     void shouldReturnNotFoundForMissingEmail() throws Exception {
+
         mockMvc.perform(
-                        get("/api/customers/email/{email}",
-                                "missing@example.com")
+                        authenticated(
+                                get(
+                                        "/api/customers/email/{email}",
+                                        "missing@example.com"
+                                )
+                        )
                 )
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.error")
+                        .value("Not Found"))
                 .andExpect(jsonPath("$.message")
-                        .value("Customer with email 'missing@example.com' not found"))
+                        .value(
+                                "Customer with email 'missing@example.com' not found"
+                        ))
                 .andExpect(jsonPath("$.path")
-                        .value("/api/customers/email/missing@example.com"))
+                        .value(
+                                "/api/customers/email/missing@example.com"
+                        ))
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
     }
 
     @Test
-    void shouldReturnConflictWhenUpdatingToExistingPhone() throws Exception {
+    void shouldReturnConflictWhenUpdatingToExistingPhone()
+            throws Exception {
+
         Customer secondCustomer = createCustomer(
                 "Second Customer",
                 "0712345679",
@@ -275,20 +391,30 @@ class CustomerControllerTest {
                 """;
 
         mockMvc.perform(
-                        put("/api/customers/{id}", secondCustomer.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                put(
+                                        "/api/customers/{id}",
+                                        secondCustomer.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409))
-                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.error")
+                        .value("Conflict"))
                 .andExpect(jsonPath("$.message")
-                        .value("Customer with phone '0712345678' already exists"))
+                        .value(
+                                "Customer with phone '0712345678' already exists"
+                        ))
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
     }
 
     @Test
-    void shouldReturnConflictWhenUpdatingToExistingEmail() throws Exception {
+    void shouldReturnConflictWhenUpdatingToExistingEmail()
+            throws Exception {
+
         Customer secondCustomer = createCustomer(
                 "Second Customer",
                 "0712345679",
@@ -304,15 +430,23 @@ class CustomerControllerTest {
                 """;
 
         mockMvc.perform(
-                        put("/api/customers/{id}", secondCustomer.getId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(requestBody)
+                        authenticated(
+                                put(
+                                        "/api/customers/{id}",
+                                        secondCustomer.getId()
+                                )
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(requestBody)
+                        )
                 )
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409))
-                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.error")
+                        .value("Conflict"))
                 .andExpect(jsonPath("$.message")
-                        .value("Customer with email 'david@example.com' already exists"))
+                        .value(
+                                "Customer with email 'david@example.com' already exists"
+                        ))
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
     }
 

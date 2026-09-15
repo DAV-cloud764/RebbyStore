@@ -293,6 +293,74 @@ class AuthorizationTest {
     }
 
     @Test
+    void customerShouldNotAccessOrderStatus() throws Exception {
+        configureValidToken(
+                "customer-token",
+                createPrincipal(
+                        3L,
+                        "customer",
+                        "customer@rebbystore.co.tz",
+                        "ROLE_CUSTOMER"
+                )
+        );
+
+        mockMvc.perform(
+                        get("/api/orders/status/test")
+                                .header(
+                                        "Authorization",
+                                        "Bearer customer-token"
+                                )
+                )
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void staffShouldAccessOrderStatus() throws Exception {
+        configureValidToken(
+                "staff-token",
+                createPrincipal(
+                        2L,
+                        "staff",
+                        "staff@rebbystore.co.tz",
+                        "ROLE_STAFF"
+                )
+        );
+
+        mockMvc.perform(
+                        get("/api/orders/status/test")
+                                .header(
+                                        "Authorization",
+                                        "Bearer staff-token"
+                                )
+                )
+                .andExpect(status().isOk())
+                .andExpect(content().string("staff"));
+    }
+
+    @Test
+    void adminShouldAccessOrderStatus() throws Exception {
+        configureValidToken(
+                "admin-token",
+                createPrincipal(
+                        1L,
+                        "admin",
+                        "admin@rebbystore.co.tz",
+                        "ROLE_ADMIN"
+                )
+        );
+
+        mockMvc.perform(
+                        get("/api/orders/status/test")
+                                .header(
+                                        "Authorization",
+                                        "Bearer admin-token"
+                                )
+                )
+                .andExpect(status().isOk())
+                .andExpect(content().string("admin"));
+    }
+
+    @Test
     void adminShouldAccessOrderEndpoints() throws Exception {
         configureValidToken(
                 "admin-token",

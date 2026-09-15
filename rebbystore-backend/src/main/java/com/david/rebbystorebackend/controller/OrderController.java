@@ -11,6 +11,9 @@ import com.david.rebbystorebackend.service.OrderService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.david.rebbystorebackend.security.UserPrincipal;
+import com.david.rebbystorebackend.security.authz.OrderAuthorizationService;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import java.net.URI;
 import java.util.List;
@@ -20,15 +23,26 @@ import java.util.List;
 public class OrderController {
 
     private final OrderService orderService;
+    private final OrderAuthorizationService orderAuthorizationService;
 
-    public OrderController(OrderService orderService) {
+    public OrderController(
+            OrderService orderService,
+            OrderAuthorizationService orderAuthorizationService
+    ) {
         this.orderService = orderService;
+        this.orderAuthorizationService = orderAuthorizationService;
     }
 
     @PostMapping
     public ResponseEntity<OrderResponse> createOrder(
+            @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody OrderCreateRequest request
     ) {
+        orderAuthorizationService.assertCanAccessCustomer(
+                principal,
+                request.customerId()
+        );
+
         Order order = orderService.createOrder(
                 request.customerId(),
                 request.deliveryAddress(),
@@ -45,9 +59,15 @@ public class OrderController {
 
     @GetMapping("/{id}")
     public ResponseEntity<OrderResponse> getOrderById(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable Long id
     ) {
         Order order = orderService.getById(id);
+
+        orderAuthorizationService.assertCanAccessOrder(
+                principal,
+                order
+        );
 
         return ResponseEntity.ok(
                 OrderResponse.from(order)
@@ -56,9 +76,15 @@ public class OrderController {
 
     @GetMapping("/number/{orderNumber}")
     public ResponseEntity<OrderResponse> getOrderByNumber(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable String orderNumber
     ) {
         Order order = orderService.getByOrderNumber(orderNumber);
+
+        orderAuthorizationService.assertCanAccessOrder(
+                principal,
+                order
+        );
 
         return ResponseEntity.ok(
                 OrderResponse.from(order)
@@ -67,8 +93,14 @@ public class OrderController {
 
     @GetMapping("/customer/{customerId}")
     public ResponseEntity<List<OrderResponse>> getCustomerOrders(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable Long customerId
     ) {
+        orderAuthorizationService.assertCanAccessCustomer(
+                principal,
+                customerId
+        );
+
         List<OrderResponse> response = orderService
                 .getCustomerOrders(customerId)
                 .stream()
@@ -91,10 +123,33 @@ public class OrderController {
         return ResponseEntity.ok(response);
     }
 
+    @DeleteMapping("/items/{itemId}")
+    public ResponseEntity<Void> removeOrderItem(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable Long itemId
+    ) {
+        orderAuthorizationService.assertCanAccessOrderItem(
+                principal,
+                itemId
+        );
+
+        orderService.removeItem(itemId);
+
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{id}/items")
     public ResponseEntity<List<OrderItemResponse>> getOrderItems(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable Long id
     ) {
+        Order order = orderService.getById(id);
+
+        orderAuthorizationService.assertCanAccessOrder(
+                principal,
+                order
+        );
+
         List<OrderItemResponse> response = orderService
                 .getItems(id)
                 .stream()
@@ -106,9 +161,17 @@ public class OrderController {
 
     @PostMapping("/{id}/items")
     public ResponseEntity<OrderItemResponse> addOrderItem(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable Long id,
             @Valid @RequestBody OrderItemCreateRequest request
     ) {
+        Order order = orderService.getById(id);
+
+        orderAuthorizationService.assertCanAccessOrder(
+                principal,
+                order
+        );
+
         OrderItem item = orderService.addItem(
                 id,
                 request.productId(),
@@ -120,14 +183,6 @@ public class OrderController {
         );
     }
 
-    @DeleteMapping("/items/{itemId}")
-    public ResponseEntity<Void> removeOrderItem(
-            @PathVariable Long itemId
-    ) {
-        orderService.removeItem(itemId);
-
-        return ResponseEntity.noContent().build();
-    }
 
     @PostMapping("/{id}/confirm")
     public ResponseEntity<OrderResponse> confirmOrder(
@@ -175,9 +230,17 @@ public class OrderController {
 
     @PostMapping("/{id}/cancel")
     public ResponseEntity<OrderResponse> cancelOrder(
+            @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable Long id
     ) {
-        Order order = orderService.cancel(id);
+        Order order = orderService.getById(id);
+
+        orderAuthorizationService.assertCanAccessOrder(
+                principal,
+                order
+        );
+
+        order = orderService.cancel(id);
 
         return ResponseEntity.ok(
                 OrderResponse.from(order)
