@@ -34,6 +34,24 @@ public class UserPrincipal implements UserDetails {
         this.authorities = authorities;
     }
 
+    public static UserPrincipal createForTesting(
+            Long id,
+            String username,
+            String email,
+            String password,
+            boolean enabled,
+            Collection<? extends GrantedAuthority> authorities
+    ) {
+        return new UserPrincipal(
+                id,
+                username,
+                email,
+                password,
+                enabled,
+                authorities
+        );
+    }
+
     public static UserPrincipal from(User user) {
         Collection<GrantedAuthority> authorities = user.getRoles()
                 .stream()

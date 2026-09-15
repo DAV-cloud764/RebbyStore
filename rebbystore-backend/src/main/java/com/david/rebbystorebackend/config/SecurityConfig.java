@@ -10,7 +10,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import com.david.rebbystorebackend.security.jwt.JwtProperties;
 
+@EnableConfigurationProperties(JwtProperties.class)
 @Configuration
 public class SecurityConfig {
 
