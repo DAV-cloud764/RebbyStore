@@ -1,12 +1,14 @@
 package com.david.rebbystorebackend.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.security.core.AuthenticationException;
 
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -14,6 +16,9 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log =
+            LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /*
      * 400 Bad Request
@@ -37,6 +42,13 @@ public class GlobalExceptionHandler {
                         )
                 );
 
+        log.warn(
+                "Request validation failed: method={}, path={}, fields={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                fieldErrors.keySet()
+        );
+
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(
@@ -53,9 +65,16 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiErrorResponse> handleAuthenticationException(
-            AuthenticationException ex,
+            AuthenticationException exception,
             HttpServletRequest request
     ) {
+        log.warn(
+                "Authentication request rejected: method={}, path={}, exception={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                exception.getClass().getSimpleName()
+        );
+
         ApiErrorResponse response = new ApiErrorResponse(
                 OffsetDateTime.now(),
                 HttpStatus.UNAUTHORIZED.value(),
@@ -80,6 +99,13 @@ public class GlobalExceptionHandler {
             IllegalArgumentException exception,
             HttpServletRequest request
     ) {
+        log.warn(
+                "Business validation error: method={}, path={}, message={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                exception.getMessage()
+        );
+
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(
@@ -102,6 +128,13 @@ public class GlobalExceptionHandler {
             ResourceNotFoundException exception,
             HttpServletRequest request
     ) {
+        log.info(
+                "Resource not found: method={}, path={}, message={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                exception.getMessage()
+        );
+
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
                 .body(
@@ -124,6 +157,13 @@ public class GlobalExceptionHandler {
             ConflictException exception,
             HttpServletRequest request
     ) {
+        log.warn(
+                "Request conflict: method={}, path={}, message={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                exception.getMessage()
+        );
+
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(
@@ -148,6 +188,14 @@ public class GlobalExceptionHandler {
             Exception exception,
             HttpServletRequest request
     ) {
+        log.error(
+                "Unexpected server error: method={}, path={}, exception={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                exception.getClass().getSimpleName(),
+                exception
+        );
+
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(
