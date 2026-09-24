@@ -21,7 +21,7 @@ export function StockMovementTable({ movements }: StockMovementTableProps) {
             <th>Type</th>
             <th>Qty</th>
             <th>Reason</th>
-            <th>Reference</th>
+            <th>Source</th>
           </tr>
         </thead>
         <tbody>
@@ -42,7 +42,13 @@ export function StockMovementTable({ movements }: StockMovementTableProps) {
                 </span>
               </td>
               <td className="text-xs text-rs-muted">{reasonLabel[m.reason] ?? m.reason}</td>
-              <td className="font-mono text-xs text-rs-muted">{m.reference ?? '—'}</td>
+              <td className="font-mono text-xs text-rs-muted">
+  {m.orderId
+    ? `Order #${m.orderId}`
+    : m.purchaseId
+      ? `Purchase #${m.purchaseId}`
+      : '—'}
+</td>
             </tr>
           ))}
         </tbody>

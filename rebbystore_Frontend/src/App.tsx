@@ -21,6 +21,8 @@ import OrderDetails from './pages/admin/OrderDetails';
 import Customers from './pages/admin/Customers';
 import Settings from './pages/admin/Settings';
 import NotFound from './pages/NotFound';
+import Login from "./pages/auth/Login";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 export default function App() {
   return (
@@ -29,29 +31,47 @@ export default function App() {
         <WishlistProvider>
           <CartProvider>
             <Routes>
-              <Route element={<CustomerLayout />}>
-                <Route path="/" element={<Home />} />
-                <Route path="/shop" element={<Shop />} />
-                <Route path="/product/:id" element={<ProductDetails />} />
-                <Route path="/cart" element={<Cart />} />
-                <Route path="/checkout" element={<Checkout />} />
-                <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
-                <Route path="*" element={<NotFound />} />
-              </Route>
-              <Route path="/admin" element={<AdminLayout />}>
-                <Route index element={<Dashboard />} />
-                <Route path="products" element={<Products />} />
-                <Route path="products/new" element={<AddProduct />} />
-                <Route path="products/:id/edit" element={<EditProduct />} />
-                <Route path="inventory" element={<Inventory />} />
-                <Route path="inventory/movements" element={<InventoryMovements />} />
-                <Route path="purchases" element={<Purchases />} />
-                <Route path="orders" element={<Orders />} />
-                <Route path="orders/:id" element={<OrderDetails />} />
-                <Route path="customers" element={<Customers />} />
-                <Route path="settings" element={<Settings />} />
-              </Route>
-            </Routes>
+  <Route element={<CustomerLayout />}>
+    <Route path="/" element={<Home />} />
+    <Route path="/shop" element={<Shop />} />
+    <Route path="/product/:id" element={<ProductDetails />} />
+    <Route path="/cart" element={<Cart />} />
+    <Route path="/checkout" element={<Checkout />} />
+    <Route
+      path="/order-confirmation/:id"
+      element={<OrderConfirmation />}
+    />
+    <Route path="*" element={<NotFound />} />
+  </Route>
+
+  {/* LOGIN MUST BE OUTSIDE /admin */}
+  <Route path="/login" element={<Login />} />
+
+  {/* ADMIN */}
+  <Route
+    path="/admin"
+    element={
+      <ProtectedRoute>
+        <AdminLayout />
+      </ProtectedRoute>
+    }
+  >
+    <Route index element={<Dashboard />} />
+    <Route path="products" element={<Products />} />
+    <Route path="products/new" element={<AddProduct />} />
+    <Route path="products/:id/edit" element={<EditProduct />} />
+    <Route path="inventory" element={<Inventory />} />
+    <Route
+      path="inventory/movements"
+      element={<InventoryMovements />}
+    />
+    <Route path="purchases" element={<Purchases />} />
+    <Route path="orders" element={<Orders />} />
+    <Route path="orders/:id" element={<OrderDetails />} />
+    <Route path="customers" element={<Customers />} />
+    <Route path="settings" element={<Settings />} />
+  </Route>
+</Routes>
           </CartProvider>
         </WishlistProvider>
       </ToastProvider>

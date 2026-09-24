@@ -87,16 +87,17 @@ export default function Checkout() {
 
     setSubmitting(true);
     try {
-      const deliveryFee = total >= 200000 ? 0 : 5000;
       const order = await orderService.create({
-        customer,
-        delivery,
-        items: items.map((i) => ({ product: i.product, quantity: i.quantity, unitPrice: i.product.price })),
-        subtotal: total,
-        deliveryFee,
-        total: total + deliveryFee,
-        paymentMethod: 'cash-on-delivery',
-      });
+  customer,
+  delivery,
+  items: items.map((item) => ({
+    product: {
+      id: item.product.id,
+    },
+    quantity: item.quantity,
+  })),
+  paymentMethod: 'cash-on-delivery',
+});
       clearCart();
       navigate(`/order-confirmation/${order.id}`);
     } catch {

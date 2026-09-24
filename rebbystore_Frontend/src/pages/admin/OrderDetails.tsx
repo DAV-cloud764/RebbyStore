@@ -9,6 +9,7 @@ import { orderService } from '../../services/orderService';
 import type { Order, OrderStatus } from '../../types/order';
 import { useToast } from '../../contexts/ToastContext';
 import { formatPrice, formatDate, formatDateTime } from '../../utils/formatting';
+import heroImage from '../../assets/hero.png';
 
 interface OutletCtx { onMenuClick: () => void; }
 
@@ -39,8 +40,23 @@ export default function OrderDetails() {
   async function handleStatusUpdate() {
     if (!order || newStatus === order.status) return;
     setUpdating(true);
-    const updated = await orderService.updateStatus(order.id, newStatus);
-    setOrder(updated);
+    const updated = await orderService.updateStatus(
+  order.id,
+  newStatus,
+);
+
+if (!updated) {
+  showToast('Failed to update order status', 'error');
+  setUpdating(false);
+  return;
+}
+
+setOrder(updated);
+setNewStatus(updated.status);
+showToast(
+  `Order status updated to "${orderStatusLabel(updated.status)}"`,
+);
+setUpdating(false);
     showToast(`Order status updated to "${orderStatusLabel(newStatus)}"`);
     setUpdating(false);
   }
@@ -79,17 +95,38 @@ export default function OrderDetails() {
                 <Badge variant={orderStatusBadgeVariant(order.status)}>{orderStatusLabel(order.status)}</Badge>
               </div>
               <div className="divide-y divide-rs-border">
-                {order.items.map(({ product, quantity, unitPrice }) => (
-                  <div key={product.id} className="flex gap-4 p-5">
-                    <img src={product.images[0]} alt={product.name} className="w-14 h-[75px] object-cover bg-rs-surface shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-rs-ink text-sm">{product.name}</p>
-                      <p className="text-xs text-rs-muted mt-0.5">{product.sku} · {product.length} · {product.color}</p>
-                      <p className="text-xs text-rs-muted mt-0.5">Qty: {quantity} × {formatPrice(unitPrice)}</p>
-                    </div>
-                    <span className="text-sm font-semibold text-rs-ink shrink-0">{formatPrice(unitPrice * quantity)}</span>
-                  </div>
-                ))}
+                {order.items.map(
+  ({ id, productName, sku, quantity, unitPrice, subtotal }) => (
+    <div
+      key={id ?? `${sku}-${productName}`}
+      className="flex gap-4 p-5"
+    >
+      <img
+        src={heroImage}
+        alt={productName}
+        className="w-14 h-[75px] object-cover bg-rs-surface shrink-0"
+      />
+
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-rs-ink text-sm">
+          {productName}
+        </p>
+
+        <p className="text-xs text-rs-muted mt-0.5">
+          {sku}
+        </p>
+
+        <p className="text-xs text-rs-muted mt-0.5">
+          Qty: {quantity} × {formatPrice(unitPrice)}
+        </p>
+      </div>
+
+      <span className="text-sm font-semibold text-rs-ink shrink-0">
+        {formatPrice(subtotal)}
+      </span>
+    </div>
+  )
+)}
               </div>
 
               {/* Totals */}
