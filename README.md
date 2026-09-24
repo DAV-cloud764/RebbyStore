@@ -1,21 +1,50 @@
-# RebbyStore — E-commerce Frontend
+# RebbyStore
 
-A modern, responsive e-commerce frontend for **RebbyStore**, a wig store based in **Ubungo Riverside, Dar es Salaam, Tanzania**.
+A full-stack e-commerce platform for **RebbyStore**, a wig store based in **Ubungo Riverside, Dar es Salaam, Tanzania**.
 
-The application is built with **React, TypeScript, Vite, and Tailwind CSS v4** and includes both a customer storefront and an administrative interface for products, inventory, purchases, orders, and customers.
+RebbyStore provides a customer storefront for browsing and purchasing wigs and an administrative platform for managing products, inventory, purchases, orders, customers, suppliers, and operational reporting.
 
-> **Project status:** Frontend prototype / MVP
->
-> Backend, database, authentication, and payment processing will be implemented separately.
+The project is currently implemented as a full-stack MVP with a React frontend and Spring Boot backend backed by PostgreSQL.
+
+---
+
+## Project Status
+
+> **Status: Full-stack MVP**
+
+The application currently includes:
+
+- Customer storefront
+- Administrative dashboard
+- Database-backed product, customer, order, inventory, supplier, and purchase management
+- JWT authentication
+- Role-based authorization
+- Inventory tracking and stock movement history
+- Purchase receiving and automatic stock-in
+- Order lifecycle management
+- Product image management
+- Reporting endpoints
+- API rate limiting
+- CORS configuration
+- Global API exception handling
+- Application logging
+- Spring Boot Actuator monitoring
+
+### Current limitations
+
+- Payment method is currently **Cash on Delivery**
+- No online payment gateway has been integrated yet
+- Checkout and protected management APIs require authentication
+- Delivery is currently limited to the configured business rules below
 
 ---
 
 ## Features
 
-### Customer Store
+### Customer Storefront
 
-- Bento Grid homepage
-- Product discovery and browsing
+- Responsive Bento Grid homepage
+- Product browsing and discovery
 - Product search
 - Category filtering
 - Hair type filtering
@@ -23,7 +52,8 @@ The application is built with **React, TypeScript, Vite, and Tailwind CSS v4** a
 - Length filtering
 - Price filtering
 - Product sorting
-- Product details and image gallery
+- Product details
+- Product image gallery
 - Wishlist
 - Shopping cart
 - Quantity controls
@@ -37,56 +67,48 @@ The application is built with **React, TypeScript, Vite, and Tailwind CSS v4** a
 - Dashboard
 - Product management
 - Add and edit products
+- Product image management
 - Inventory overview
-- Stock-in management
-- Stock-out management
+- Stock-in
+- Stock-out
+- Stock adjustments
 - Inventory movement history
-- Purchase tracking
+- Low-stock monitoring
+- Purchase management
+- Supplier management
 - Order management
 - Order status management
 - Customer management
+- Reporting and operational summaries
 - Store settings
-- Low-stock and out-of-stock visibility
 
 ---
 
-## Business
+## Business Rules
 
-**Store:** RebbyStore  
-**Location:** Ubungo Riverside, Dar es Salaam, Tanzania  
-**Phone:** 0620196710  
-**Support:** debbytz@gmail.com  
-**Payment:** Cash on Delivery
-
-### Delivery rule
+### Delivery
 
 Orders with a subtotal of **TSh 200,000 or more** qualify for free delivery.
 
-Orders below **TSh 200,000** use a flat **TSh 5,000** delivery fee.
+Orders below **TSh 200,000** have a flat **TSh 5,000** delivery fee.
 
-> These calculations are currently represented in the frontend prototype and should be re-enforced by the backend when the real API is implemented.
+### Payment
 
----
+The currently supported payment method is:
 
-## Tech Stack
+**Cash on Delivery (COD)**
 
-- React
-- TypeScript
-- Vite
-- Tailwind CSS v4
-- React Router
-- Lucide React
+### Order Lifecycle
 
----
+Orders follow the following lifecycle:
 
-## Getting Started
-
-### Prerequisites
-
-Make sure you have Node.js and npm installed.
-
-Check your versions:
-
-```bash
-node -v
-npm -v
+```text
+PENDING
+   ↓
+CONFIRMED
+   ↓
+PROCESSING
+   ↓
+READY_FOR_DELIVERY
+   ↓
+DELIVERED
