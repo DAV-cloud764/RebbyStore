@@ -1,10 +1,8 @@
 export type MovementType = 'in' | 'out';
+
 export type MovementReason =
   | 'purchase'
   | 'sale'
-  | 'damaged'
-  | 'lost'
-  | 'returned-to-supplier'
   | 'adjustment';
 
 export interface InventoryRecord {
@@ -26,8 +24,9 @@ export interface InventoryMovement {
   type: MovementType;
   quantity: number;
   reason: MovementReason;
-  reference?: string;
-  notes?: string;
+
+  orderId?: number | null;
+  purchaseId?: number | null;
+
   date: string;
-  performedBy?: string;
 }

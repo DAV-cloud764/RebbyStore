@@ -10,6 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/customers")
 public class CustomerController {
@@ -40,6 +42,17 @@ public class CustomerController {
         return ResponseEntity.ok(
                 CustomerResponse.from(customer)
         );
+    }
+
+    @GetMapping
+    public ResponseEntity<List<CustomerResponse>> getAllCustomers() {
+        List<CustomerResponse> response = customerService
+                .getAllCustomers()
+                .stream()
+                .map(CustomerResponse::from)
+                .toList();
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/email/{email}")

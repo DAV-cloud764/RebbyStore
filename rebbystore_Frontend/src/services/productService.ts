@@ -24,6 +24,13 @@ interface BackendCategory {
   slug: string;
 }
 
+interface BackendProductImage {
+  id: number;
+  imageUrl: string;
+  sortOrder: number;
+  primary: boolean;
+}
+
 interface ProductWritePayload {
   name: string;
   sku: string;
@@ -109,10 +116,29 @@ function normalizeCategory(
   return "human-hair";
 }
 
+async function getProductImages(
+  productId: number,
+): Promise<string[]> {
+  const response = await apiClient<BackendProductImage[]>(
+    `/api/products/${productId}/images`,
+    {
+      method: "GET",
+      authenticated: false,
+    },
+  );
+
+  return response
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((image) => image.imageUrl);
+}
+
 async function mapProduct(
   backendProduct: BackendProduct,
 ): Promise<Product> {
-  const categories = await getCategories();
+  const [categories, productImages] = await Promise.all([
+    getCategories(),
+    getProductImages(backendProduct.id),
+  ]);
 
   const category = categories.find(
     (item) => item.id === backendProduct.categoryId,
@@ -123,7 +149,9 @@ async function mapProduct(
     name: backendProduct.name,
     sku: backendProduct.sku,
     price: backendProduct.price,
-    images: [heroImage],
+    images: productImages.length > 0
+      ? productImages
+      : [heroImage],
     description: backendProduct.description,
     category: normalizeCategory(category?.slug),
     color: backendProduct.color,

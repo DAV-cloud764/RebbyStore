@@ -1,209 +1,592 @@
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import type { FormEvent } from 'react';
 import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
+
 import { AdminHeader } from '../../components/admin/AdminSidebar';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { Select } from '../../components/ui/Select';
 import { Input } from '../../components/ui/Input';
+
 import { purchaseService } from '../../services/purchaseService';
 import { productService } from '../../services/productService';
-import { inventoryService } from '../../services/inventoryService';
-import type { Purchase, PurchaseItem } from '../../types/purchase';
-import type { Product } from '../../types/product';
-import { useToast } from '../../contexts/ToastContext';
-import { formatPrice, formatDate } from '../../utils/formatting';
+import { supplierService } from '../../services/supplierService';
+import { ApiError } from '../../services/apiClient';
 
-interface OutletCtx { onMenuClick: () => void; }
+import type { Purchase } from '../../types/purchase';
+import type { Product } from '../../types/product';
+import type { Supplier } from '../../services/supplierService';
+
+import { useToast } from '../../contexts/ToastContext';
+import {
+  formatPrice,
+  formatDate,
+} from '../../utils/formatting';
+
+interface OutletCtx {
+  onMenuClick: () => void;
+}
+
+interface PurchaseLine {
+  productId: string;
+  quantity: string;
+  costPerUnit: string;
+}
+
+const today = () =>
+  new Date().toISOString().slice(0, 10);
 
 export default function Purchases() {
-  const { onMenuClick } = useOutletContext<OutletCtx>();
-  const { showToast } = useToast();
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const { onMenuClick } =
+    useOutletContext<OutletCtx>();
 
-  const [supplier, setSupplier] = useState('');
-  const [notes, setNotes] = useState('');
-  const [lines, setLines] = useState<{ productId: string; quantity: string; costPerUnit: string }[]>([
-    { productId: '', quantity: '', costPerUnit: '' },
-  ]);
+  const { showToast } = useToast();
+
+  const [purchases, setPurchases] =
+    useState<Purchase[]>([]);
+
+  const [products, setProducts] =
+    useState<Product[]>([]);
+
+  const [suppliers, setSuppliers] =
+    useState<Supplier[]>([]);
+
+  const [modalOpen, setModalOpen] =
+    useState(false);
+
+  const [expanded, setExpanded] =
+    useState<string | null>(null);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [supplierId, setSupplierId] =
+    useState('');
+
+  const [purchaseDate, setPurchaseDate] =
+    useState(today());
+
+  const [notes, setNotes] =
+    useState('');
+
+  const [lines, setLines] =
+    useState<PurchaseLine[]>([
+      {
+        productId: '',
+        quantity: '',
+        costPerUnit: '',
+      },
+    ]);
 
   useEffect(() => {
-    purchaseService.getAll().then(setPurchases);
-    productService.getAll().then(setProducts);
-  }, []);
+    async function loadData() {
+      try {
+        const [
+          loadedPurchases,
+          loadedProducts,
+          loadedSuppliers,
+        ] = await Promise.all([
+          purchaseService.getAll(),
+          productService.getAll(),
+          supplierService.getAll(),
+        ]);
+
+        setPurchases(loadedPurchases);
+        setProducts(loadedProducts);
+        setSuppliers(loadedSuppliers);
+      } catch (error) {
+        const message =
+          error instanceof ApiError
+            ? error.message
+            : 'Failed to load purchase data';
+
+        showToast(message, 'error');
+      }
+    }
+
+    void loadData();
+  }, [showToast]);
+
+  function resetForm() {
+    setSupplierId('');
+    setPurchaseDate(today());
+    setNotes('');
+    setLines([
+      {
+        productId: '',
+        quantity: '',
+        costPerUnit: '',
+      },
+    ]);
+  }
 
   function addLine() {
-    setLines((l) => [...l, { productId: '', quantity: '', costPerUnit: '' }]);
+    setLines((current) => [
+      ...current,
+      {
+        productId: '',
+        quantity: '',
+        costPerUnit: '',
+      },
+    ]);
   }
 
-  function removeLine(i: number) {
-    setLines((l) => l.filter((_, idx) => idx !== i));
+  function removeLine(index: number) {
+    setLines((current) =>
+      current.filter((_, i) => i !== index),
+    );
   }
 
-  function updateLine(i: number, key: string, val: string) {
-    setLines((l) => l.map((ln, idx) => idx === i ? { ...ln, [key]: val } : ln));
+  function updateLine(
+    index: number,
+    key: keyof PurchaseLine,
+    value: string,
+  ) {
+    setLines((current) =>
+      current.map((line, i) =>
+        i === index
+          ? { ...line, [key]: value }
+          : line,
+      ),
+    );
   }
 
-  const lineTotal = lines.reduce((s, l) => s + Number(l.quantity || 0) * Number(l.costPerUnit || 0), 0);
+  const validLines = lines.filter(
+    (line) =>
+      line.productId &&
+      Number(line.quantity) > 0 &&
+      Number(line.costPerUnit) > 0,
+  );
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!supplier.trim()) { showToast('Supplier name is required', 'error'); return; }
-    const validLines = lines.filter((l) => l.productId && Number(l.quantity) > 0);
-    if (validLines.length === 0) { showToast('Add at least one product line', 'error'); return; }
+  const lineTotal = validLines.reduce(
+    (sum, line) =>
+      sum +
+      Number(line.quantity) *
+        Number(line.costPerUnit),
+    0,
+  );
+
+  async function handleSubmit(
+    event: FormEvent,
+  ) {
+    event.preventDefault();
+
+    if (!supplierId) {
+      showToast(
+        'Supplier is required',
+        'error',
+      );
+      return;
+    }
+
+    if (!purchaseDate) {
+      showToast(
+        'Purchase date is required',
+        'error',
+      );
+      return;
+    }
+
+    if (validLines.length === 0) {
+      showToast(
+        'Add at least one valid product line',
+        'error',
+      );
+      return;
+    }
 
     setSaving(true);
+
     try {
-      const items: PurchaseItem[] = validLines.map((l) => {
-        const p = products.find((pr) => pr.id === l.productId)!;
-        return {
-          productId: p.id, productName: p.name, sku: p.sku,
-          quantity: Number(l.quantity), costPerUnit: Number(l.costPerUnit),
-          totalCost: Number(l.quantity) * Number(l.costPerUnit),
-        };
-      });
-      const totalCost = items.reduce((s, i) => s + i.totalCost, 0);
-      const poNum = `PO-${Date.now().toString().slice(-4)}`;
-
-      await purchaseService.create({
-        purchaseNumber: poNum, supplier, items, totalCost,
-        date: new Date().toISOString(), notes: notes || undefined, status: 'received',
-      });
-
-      // Record inventory movements for each line
-      for (const item of items) {
-        await inventoryService.recordMovement({
-          productId: item.productId, productName: item.productName, sku: item.sku,
-          type: 'in', quantity: item.quantity, reason: 'purchase',
-          reference: poNum, date: new Date().toISOString(),
+      const receivedPurchase =
+        await purchaseService.createAndReceive({
+          supplierId,
+          purchaseDate,
+          notes: notes.trim() || undefined,
+          items: validLines.map((line) => ({
+            productId: line.productId,
+            quantity: Number(line.quantity),
+            unitCost: Number(line.costPerUnit),
+          })),
         });
-      }
 
-      const updated = await purchaseService.getAll();
-      setPurchases(updated);
+      const updatedPurchases =
+        await purchaseService.getAll();
+
+      setPurchases(updatedPurchases);
       setModalOpen(false);
-      setSupplier(''); setNotes('');
-      setLines([{ productId: '', quantity: '', costPerUnit: '' }]);
-      showToast(`Purchase ${poNum} recorded. Stock updated.`);
+      resetForm();
+
+      showToast(
+        `Purchase ${receivedPurchase.purchaseNumber} received. Stock updated.`,
+      );
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : 'Failed to record purchase';
+
+      showToast(message, 'error');
     } finally {
       setSaving(false);
     }
   }
 
-  const totalSpend = purchases.reduce((s, p) => s + p.totalCost, 0);
-  const productOptions = products.map((p) => ({ value: p.id, label: `${p.name} (${p.sku})` }));
+  const totalSpend = purchases
+    .filter((purchase) => purchase.status === 'received')
+    .reduce(
+      (sum, purchase) =>
+        sum + purchase.totalCost,
+      0,
+    );
+
+  const supplierOptions = suppliers.map(
+    (supplier) => ({
+      value: supplier.id,
+      label: supplier.name,
+    }),
+  );
+
+  const productOptions = products.map(
+    (product) => ({
+      value: product.id,
+      label: `${product.name} (${product.sku})`,
+    }),
+  );
+
+  function statusVariant(
+    status: Purchase['status'],
+  ): 'in-stock' | 'low-stock' | 'out-of-stock' {
+    switch (status) {
+      case 'received':
+        return 'in-stock';
+
+      case 'ordered':
+      case 'draft':
+        return 'low-stock';
+
+      case 'cancelled':
+        return 'out-of-stock';
+    }
+  }
 
   return (
     <>
       <AdminHeader
         title="Purchases"
         onMenuClick={onMenuClick}
-        actions={<Button size="sm" onClick={() => setModalOpen(true)}><Plus size={14} /> New Purchase</Button>}
+        actions={
+          <Button
+            size="sm"
+            onClick={() => {
+              resetForm();
+              setModalOpen(true);
+            }}
+          >
+            <Plus size={14} />
+            New Purchase
+          </Button>
+        }
       />
 
       <main className="p-4 md:p-6 space-y-5">
-        {/* Stats */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white border border-rs-border p-4">
-            <p className="section-label mb-1">Total Purchases</p>
-            <p className="text-2xl font-display font-bold text-rs-ink">{purchases.length}</p>
+            <p className="section-label mb-1">
+              Total Purchases
+            </p>
+            <p className="text-2xl font-display font-bold text-rs-ink">
+              {purchases.length}
+            </p>
           </div>
+
           <div className="bg-rs-ink text-white p-4 border border-rs-ink">
-            <p className="text-xs tracking-wider uppercase text-white/60 mb-1">Total Spend</p>
-            <p className="text-2xl font-display font-bold">{formatPrice(totalSpend)}</p>
+            <p className="text-xs tracking-wider uppercase text-white/60 mb-1">
+              Received Purchase Spend
+            </p>
+            <p className="text-2xl font-display font-bold">
+              {formatPrice(totalSpend)}
+            </p>
           </div>
         </div>
 
-        {/* List */}
         <div className="bg-white border border-rs-border divide-y divide-rs-border">
-          {purchases.map((pu) => (
-            <div key={pu.id}>
+          {purchases.map((purchase) => (
+            <div key={purchase.id}>
               <div
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-rs-surface/40 transition-colors"
-                onClick={() => setExpanded(expanded === pu.id ? null : pu.id)}
+                onClick={() =>
+                  setExpanded(
+                    expanded === purchase.id
+                      ? null
+                      : purchase.id,
+                  )
+                }
               >
-                <div className="flex items-center gap-4">
-                  <span className="font-mono text-xs font-semibold text-rs-ink">{pu.purchaseNumber}</span>
-                  <span className="text-sm text-rs-muted">{pu.supplier}</span>
-                  <span className="hidden sm:block text-xs text-rs-muted">{pu.items.length} item{pu.items.length !== 1 ? 's' : ''}</span>
+                <div className="flex items-center gap-4 min-w-0">
+                  <span className="font-mono text-xs font-semibold text-rs-ink">
+                    {purchase.purchaseNumber}
+                  </span>
+
+                  <span className="text-sm text-rs-muted truncate">
+                    {purchase.supplier}
+                  </span>
+
+                  <span className="hidden sm:block text-xs text-rs-muted">
+                    {purchase.items.length}{' '}
+                    item
+                    {purchase.items.length !== 1
+                      ? 's'
+                      : ''}
+                  </span>
                 </div>
-                <div className="flex items-center gap-4">
-                  <span className="text-sm font-semibold text-rs-ink">{formatPrice(pu.totalCost)}</span>
-                  <span className="text-xs text-rs-muted hidden sm:block">{formatDate(pu.date)}</span>
-                  <Badge variant="in-stock">{pu.status}</Badge>
-                  {expanded === pu.id ? <ChevronUp size={14} className="text-rs-muted" /> : <ChevronDown size={14} className="text-rs-muted" />}
+
+                <div className="flex items-center gap-4 shrink-0">
+                  <span className="text-sm font-semibold text-rs-ink">
+                    {formatPrice(
+                      purchase.totalCost,
+                    )}
+                  </span>
+
+                  <span className="text-xs text-rs-muted hidden sm:block">
+                    {formatDate(purchase.date)}
+                  </span>
+
+                  <Badge
+                    variant={statusVariant(
+                      purchase.status,
+                    )}
+                  >
+                    {purchase.status}
+                  </Badge>
+
+                  {expanded === purchase.id ? (
+                    <ChevronUp
+                      size={14}
+                      className="text-rs-muted"
+                    />
+                  ) : (
+                    <ChevronDown
+                      size={14}
+                      className="text-rs-muted"
+                    />
+                  )}
                 </div>
               </div>
 
-              {expanded === pu.id && (
+              {expanded === purchase.id && (
                 <div className="px-4 pb-4 bg-rs-surface/30">
                   <table className="admin-table mt-2">
-                    <thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Cost/Unit</th><th>Total</th></tr></thead>
+                    <thead>
+                      <tr>
+                        <th>Product</th>
+                        <th>SKU</th>
+                        <th>Qty</th>
+                        <th>Cost/Unit</th>
+                        <th>Total</th>
+                      </tr>
+                    </thead>
+
                     <tbody>
-                      {pu.items.map((item) => (
-                        <tr key={item.productId}>
-                          <td className="text-xs">{item.productName}</td>
-                          <td className="font-mono text-xs text-rs-muted">{item.sku}</td>
-                          <td className="text-xs">{item.quantity}</td>
-                          <td className="text-xs">{formatPrice(item.costPerUnit)}</td>
-                          <td className="text-xs font-semibold">{formatPrice(item.totalCost)}</td>
-                        </tr>
-                      ))}
+                      {purchase.items.map(
+                        (item) => (
+                          <tr
+                            key={
+                              item.id ??
+                              `${purchase.id}-${item.productId}`
+                            }
+                          >
+                            <td className="text-xs">
+                              {item.productName}
+                            </td>
+
+                            <td className="font-mono text-xs text-rs-muted">
+                              {item.sku}
+                            </td>
+
+                            <td className="text-xs">
+                              {item.quantity}
+                            </td>
+
+                            <td className="text-xs">
+                              {formatPrice(
+                                item.costPerUnit,
+                              )}
+                            </td>
+
+                            <td className="text-xs font-semibold">
+                              {formatPrice(
+                                item.totalCost,
+                              )}
+                            </td>
+                          </tr>
+                        ),
+                      )}
                     </tbody>
                   </table>
-                  {pu.notes && <p className="text-xs text-rs-muted mt-3 italic">Note: {pu.notes}</p>}
+
+                  {purchase.notes && (
+                    <p className="text-xs text-rs-muted mt-3 italic">
+                      Note: {purchase.notes}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
           ))}
+
           {purchases.length === 0 && (
-            <p className="text-center py-10 text-rs-muted text-sm">No purchases recorded yet.</p>
+            <p className="text-center py-10 text-rs-muted text-sm">
+              No purchases recorded yet.
+            </p>
           )}
         </div>
       </main>
 
-      {/* New Purchase Modal */}
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="New Purchase" size="lg">
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <Input label="Supplier Name" value={supplier} onChange={(e) => setSupplier(e.target.value)} required placeholder="e.g. Guangzhou Hair Trading Co." />
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => {
+          if (!saving) {
+            setModalOpen(false);
+          }
+        }}
+        title="New Purchase"
+        size="lg"
+      >
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-5"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Select
+              label="Supplier"
+              options={supplierOptions}
+              placeholder="Select supplier"
+              value={supplierId}
+              onChange={(event) =>
+                setSupplierId(event.target.value)
+              }
+              required
+            />
 
-          {/* Line items */}
+            <Input
+              label="Purchase Date"
+              type="date"
+              value={purchaseDate}
+              onChange={(event) =>
+                setPurchaseDate(
+                  event.target.value,
+                )
+              }
+              required
+            />
+          </div>
+
+          <div className="px-3 py-2.5 bg-rs-surface border border-rs-border text-xs text-rs-muted">
+            This action creates the purchase as
+            <strong className="text-rs-ink">
+              {' '}
+              draft
+            </strong>
+            , adds the products, changes it to
+            <strong className="text-rs-ink">
+              {' '}
+              ordered
+            </strong>
+            , then
+            <strong className="text-rs-ink">
+              {' '}
+              receives
+            </strong>
+            it. Stock is updated when it is received.
+          </div>
+
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="label-base">Products</label>
-              <button type="button" onClick={addLine} className="text-xs text-rs-muted hover:text-rs-ink flex items-center gap-1 transition-colors">
-                <Plus size={12} /> Add line
+              <label className="label-base">
+                Products
+              </label>
+
+              <button
+                type="button"
+                onClick={addLine}
+                className="text-xs text-rs-muted hover:text-rs-ink flex items-center gap-1 transition-colors"
+              >
+                <Plus size={12} />
+                Add line
               </button>
             </div>
+
             <div className="space-y-2">
-              {lines.map((line, i) => (
-                <div key={i} className="grid grid-cols-12 gap-2 items-start">
+              {lines.map((line, index) => (
+                <div
+                  key={index}
+                  className="grid grid-cols-12 gap-2 items-start"
+                >
                   <div className="col-span-5">
                     <Select
                       options={productOptions}
                       placeholder="Select product"
                       value={line.productId}
-                      onChange={(e) => updateLine(i, 'productId', e.target.value)}
+                      onChange={(event) =>
+                        updateLine(
+                          index,
+                          'productId',
+                          event.target.value,
+                        )
+                      }
                     />
                   </div>
+
                   <div className="col-span-3">
-                    <input type="number" min={1} value={line.quantity}
-                      onChange={(e) => updateLine(i, 'quantity', e.target.value)}
-                      placeholder="Qty" className="input-base text-sm" />
+                    <input
+                      type="number"
+                      min={1}
+                      value={line.quantity}
+                      onChange={(event) =>
+                        updateLine(
+                          index,
+                          'quantity',
+                          event.target.value,
+                        )
+                      }
+                      placeholder="Qty"
+                      className="input-base text-sm"
+                    />
                   </div>
+
                   <div className="col-span-3">
-                    <input type="number" min={0} value={line.costPerUnit}
-                      onChange={(e) => updateLine(i, 'costPerUnit', e.target.value)}
-                      placeholder="Cost/unit" className="input-base text-sm" />
+                    <input
+                      type="number"
+                      min={0.01}
+                      step="0.01"
+                      value={line.costPerUnit}
+                      onChange={(event) =>
+                        updateLine(
+                          index,
+                          'costPerUnit',
+                          event.target.value,
+                        )
+                      }
+                      placeholder="Cost/unit"
+                      className="input-base text-sm"
+                    />
                   </div>
+
                   <div className="col-span-1 pt-2.5">
                     {lines.length > 1 && (
-                      <button type="button" onClick={() => removeLine(i)} className="text-rs-muted hover:text-red-500 transition-colors text-lg leading-none">×</button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removeLine(index)
+                        }
+                        className="text-rs-muted hover:text-red-500 transition-colors text-lg leading-none"
+                        aria-label="Remove product line"
+                      >
+                        ×
+                      </button>
                     )}
                   </div>
                 </div>
@@ -213,18 +596,47 @@ export default function Purchases() {
 
           {lineTotal > 0 && (
             <div className="px-3 py-2.5 bg-rs-surface border border-rs-border text-sm">
-              Estimated Total: <strong className="text-rs-ink">{formatPrice(lineTotal)}</strong>
+              Estimated Total:{' '}
+              <strong className="text-rs-ink">
+                {formatPrice(lineTotal)}
+              </strong>
             </div>
           )}
 
           <div>
-            <label className="label-base">Notes (optional)</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="input-base resize-none" placeholder="Shipping details, payment terms…" />
+            <label className="label-base">
+              Notes (optional)
+            </label>
+
+            <textarea
+              value={notes}
+              onChange={(event) =>
+                setNotes(event.target.value)
+              }
+              rows={2}
+              className="input-base resize-none"
+              placeholder="Shipping details, payment terms…"
+              maxLength={2000}
+            />
           </div>
 
           <div className="flex gap-3 pt-2">
-            <Button type="submit" loading={saving} className="flex-1 justify-center">Record Purchase & Update Stock</Button>
-            <Button variant="secondary" type="button" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button
+              type="submit"
+              loading={saving}
+              className="flex-1 justify-center"
+            >
+              Record Purchase & Update Stock
+            </Button>
+
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={saving}
+              onClick={() => setModalOpen(false)}
+            >
+              Cancel
+            </Button>
           </div>
         </form>
       </Modal>

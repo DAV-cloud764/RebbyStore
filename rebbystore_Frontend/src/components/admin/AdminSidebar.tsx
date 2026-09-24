@@ -1,10 +1,24 @@
 import { useState } from 'react';
-import { NavLink, Link } from 'react-router-dom';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
+
 import {
-  LayoutDashboard, Package, Layers, BarChart3, ShoppingCart,
-  Users, Settings, ChevronDown, ChevronRight, ArrowRightLeft, X, Menu
+  LayoutDashboard,
+  Package,
+  Layers,
+  BarChart3,
+  ShoppingCart,
+  Users,
+  Settings,
+  ChevronDown,
+  ChevronRight,
+  ArrowRightLeft,
+  LogOut,
+  X,
+  Menu,
 } from 'lucide-react';
+
 import { storeConfig } from '../../config/store';
+import { clearAuthToken } from '../../services/apiClient';
 
 interface NavItem {
   label: string;
@@ -103,30 +117,62 @@ interface AdminSidebarProps {
   onMobileClose: () => void;
 }
 
-export function AdminSidebar({ mobileOpen, onMobileClose }: AdminSidebarProps) {
+export function AdminSidebar({
+  mobileOpen,
+  onMobileClose,
+}: AdminSidebarProps) {
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    clearAuthToken();
+    onMobileClose();
+    navigate('/login', { replace: true });
+  };
+
   const sidebar = (
     <div className="w-56 bg-rs-ink h-full flex flex-col">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-white/10">
-        <Link to="/" className="font-display text-lg font-bold text-white tracking-[0.08em] hover:text-rs-accent transition-colors">
+        <Link
+          to="/"
+          className="font-display text-lg font-bold text-white tracking-[0.08em] hover:text-rs-accent transition-colors"
+        >
           {storeConfig.name}
         </Link>
-        <p className="text-[10px] text-white/40 tracking-wider uppercase mt-0.5">Admin Panel</p>
+
+        <p className="text-[10px] text-white/40 tracking-wider uppercase mt-0.5">
+          Admin Panel
+        </p>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-4 space-y-0.5 px-2" aria-label="Admin navigation">
+      {/* Navigation */}
+      <nav
+        className="flex-1 overflow-y-auto py-4 space-y-0.5 px-2"
+        aria-label="Admin navigation"
+      >
         {navItems.map((item) => (
           <NavGroup key={item.label} item={item} />
         ))}
       </nav>
 
       {/* Footer */}
-      <div className="px-5 py-4 border-t border-white/10">
-        <Link to="/" className="flex items-center gap-2 text-xs text-white/50 hover:text-white transition-colors">
+      <div className="px-5 py-4 border-t border-white/10 space-y-3">
+        <Link
+          to="/"
+          className="flex items-center gap-2 text-xs text-white/50 hover:text-white transition-colors"
+        >
           <ArrowRightLeft size={13} />
           View Store
         </Link>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="w-full flex items-center gap-2 text-xs text-white/50 hover:text-red-400 transition-colors"
+        >
+          <LogOut size={13} />
+          Logout
+        </button>
       </div>
     </div>
   );
@@ -141,9 +187,14 @@ export function AdminSidebar({ mobileOpen, onMobileClose }: AdminSidebarProps) {
       {/* Mobile overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden flex">
-          <div className="absolute inset-0 bg-rs-ink/50" onClick={onMobileClose} />
+          <div
+            className="absolute inset-0 bg-rs-ink/50"
+            onClick={onMobileClose}
+          />
+
           <div className="relative flex h-full">
             {sidebar}
+
             <button
               onClick={onMobileClose}
               className="absolute top-4 right-4 text-white/60 hover:text-white"

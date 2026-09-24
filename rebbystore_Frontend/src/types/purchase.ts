@@ -1,4 +1,11 @@
+export type PurchaseStatus =
+  | 'draft'
+  | 'ordered'
+  | 'received'
+  | 'cancelled';
+
 export interface PurchaseItem {
+  id?: string;
   productId: string;
   productName: string;
   sku: string;
@@ -9,11 +16,12 @@ export interface PurchaseItem {
 
 export interface Purchase {
   id: string;
-  purchaseNumber: string;
+  supplierId: string;
   supplier: string;
+  purchaseNumber: string;
   items: PurchaseItem[];
   totalCost: number;
   date: string;
   notes?: string;
-  status: 'pending' | 'received' | 'partial';
+  status: PurchaseStatus;
 }

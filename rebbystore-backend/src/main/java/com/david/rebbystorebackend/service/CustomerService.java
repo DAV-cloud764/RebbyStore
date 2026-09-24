@@ -9,6 +9,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Comparator;
+import java.util.List;
 
 @Service
 @Transactional
@@ -58,6 +60,17 @@ public class CustomerService {
     }
 
     @Transactional(readOnly = true)
+    public java.util.List<Customer> getAllCustomers() {
+        return customerRepository.findAll()
+                .stream()
+                .sorted(java.util.Comparator.comparing(
+                        Customer::getCreatedAt,
+                        java.util.Comparator.nullsLast(
+                                java.util.Comparator.reverseOrder()
+                        )
+                ))
+                .toList();
+    }
     public Customer getCustomerById(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Customer ID is required");
