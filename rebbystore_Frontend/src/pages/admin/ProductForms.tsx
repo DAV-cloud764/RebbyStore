@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { productService } from '../../services/productService';
+import { inventoryService } from '../../services/inventoryService';
 import type { Product } from '../../types/product';
 import { useToast } from '../../contexts/ToastContext';
 import { storeConfig } from '../../config/store';
@@ -130,17 +131,27 @@ function ProductForm({ initialData, onSave, title, onMenuClick }: {
             </div>
 
             {/* Images */}
-            <div className="bg-white border border-rs-border p-5 space-y-3">
-              <h2 className="font-display font-semibold text-rs-ink">Images</h2>
-              <p className="text-xs text-rs-muted">Enter image URLs, one per line. Replace with real product photo URLs when available.</p>
-              <textarea
-                value={form.images}
-                onChange={(e) => handleChange('images', e.target.value)}
-                rows={4}
-                className="input-base resize-none font-mono text-xs"
-                placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg"
-              />
-            </div>
+<div className="bg-white border border-rs-border p-5 space-y-3">
+  <div>
+    <h2 className="font-display font-semibold text-rs-ink">
+      Product Images
+    </h2>
+
+    <p className="mt-1 text-xs text-rs-muted">
+      Product image upload will be available here.
+    </p>
+  </div>
+
+  <div className="border border-dashed border-rs-border bg-rs-surface p-8 text-center">
+    <p className="text-sm font-medium text-rs-ink">
+      Upload product photos
+    </p>
+
+    <p className="mt-1 text-xs text-rs-muted">
+      Image storage integration coming next.
+    </p>
+  </div>
+</div>
 
             <div className="flex gap-3">
               <Button type="submit" loading={saving}>
@@ -163,20 +174,35 @@ export function AddProduct() {
   const navigate = useNavigate();
   const { showToast } = useToast();
 
-  async function handleSave(data: ProductFormData) {
-    await productService.create({
-      name: data.name, sku: data.sku, price: Number(data.price),
-      description: data.description, category: data.category as Product['category'],
-      color: data.color, texture: data.texture as Product['texture'],
-      length: data.length, hairType: data.hairType as Product['hairType'],
-      stockQuantity: Number(data.stockQuantity),
-      lowStockThreshold: Number(data.lowStockThreshold),
-      status: data.status,
-      images: data.images.split('\n').map((s) => s.trim()).filter(Boolean),
-    });
-    showToast('Product created successfully');
-    navigate('/admin/products');
+async function handleSave(data: ProductFormData) {
+  const product = await productService.create({
+    name: data.name,
+    sku: data.sku,
+    price: Number(data.price),
+    description: data.description,
+    category: data.category as Product['category'],
+    color: data.color,
+    texture: data.texture as Product['texture'],
+    length: data.length,
+    hairType: data.hairType as Product['hairType'],
+    stockQuantity: 0,
+    lowStockThreshold: Number(data.lowStockThreshold),
+    status: 'active',
+    images: [],
+  });
+
+  const initialStock = Number(data.stockQuantity);
+
+  if (initialStock > 0) {
+    await inventoryService.stockIn(
+      product.id,
+      initialStock,
+    );
   }
+
+  showToast('Product created successfully');
+  navigate('/admin/products');
+}
 
   return <ProductForm initialData={EMPTY_FORM} onSave={handleSave} title="Add Product" onMenuClick={onMenuClick} />;
 }
