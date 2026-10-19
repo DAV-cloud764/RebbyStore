@@ -14,4 +14,6 @@ public interface InventoryMovementRepository extends JpaRepository<InventoryMove
     List<InventoryMovement> findByPurchaseId(Long purchaseId);
 
     List<InventoryMovement> findByProductId(Long productId);
+
+    List<InventoryMovement> findAllByOrderByCreatedAtDesc();
 }

@@ -19,7 +19,7 @@ export default function ProductDetails() {
     if (!id) return;
     setLoading(true);
     productService.getById(id).then((p) => {
-      if (!p) { setNotFound(true); setLoading(false); return; }
+      if (!p || p.status !== 'active') { setNotFound(true); setLoading(false); return; }
       setProduct(p);
       // Fetch related products (same category, different ID)
       productService.getAll().then((all) => {
@@ -36,7 +36,7 @@ export default function ProductDetails() {
     return (
       <div className="page-container py-12">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-          <div className="aspect-[3/4] bg-rs-surface animate-pulse" />
+          <div className="aspect ratio: 3/4; bg-rs-surface animate-pulse" />
           <div className="space-y-4">
             <div className="h-6 w-24 bg-rs-surface animate-pulse" />
             <div className="h-10 w-3/4 bg-rs-surface animate-pulse" />

@@ -57,8 +57,15 @@ export default function Dashboard() {
   const [purchaseSummary, setPurchaseSummary] =
     useState<PurchaseSummary | null>(null);
 
-  useEffect(() => {
-    async function loadDashboard() {
+useEffect(() => {
+  let mounted = true;
+  let refreshing = false;
+
+  async function loadDashboard() {
+    if (refreshing) return;
+    refreshing = true;
+
+    try {
       const [
         productsResult,
         ordersResult,
@@ -73,15 +80,51 @@ export default function Dashboard() {
         reportingService.getPurchaseSummary(),
       ]);
 
+      if (!mounted) return;
+
       setProducts(productsResult);
       setOrders(ordersResult);
       setInventorySummary(inventoryResult);
       setSalesSummary(salesResult);
       setPurchaseSummary(purchaseResult);
+    } catch (error) {
+      console.error('Failed to refresh dashboard:', error);
+    } finally {
+      refreshing = false;
     }
+  }
 
-    void loadDashboard();
-  }, []);
+  function refreshWhenVisible() {
+    if (document.visibilityState === 'visible') {
+      void loadDashboard();
+    }
+  }
+
+  void loadDashboard();
+
+  // Refresh every 15 seconds while the dashboard is open.
+  const intervalId = window.setInterval(
+    refreshWhenVisible,
+    15_000
+  );
+
+  // Refresh immediately when the user returns to the tab.
+  window.addEventListener('focus', refreshWhenVisible);
+  document.addEventListener(
+    'visibilitychange',
+    refreshWhenVisible
+  );
+
+  return () => {
+    mounted = false;
+    window.clearInterval(intervalId);
+    window.removeEventListener('focus', refreshWhenVisible);
+    document.removeEventListener(
+      'visibilitychange',
+      refreshWhenVisible
+    );
+  };
+}, []);
 
   const outOfStock = products.filter(
     (product) =>

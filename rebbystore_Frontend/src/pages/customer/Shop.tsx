@@ -22,12 +22,60 @@ export default function Shop() {
     texture: searchParams.get('texture') ?? '',
   }));
 
-  useEffect(() => {
-    productService.getAll().then((products) => {
-      setAllProducts(products);
-      setLoading(false);
-    });
-  }, []);
+useEffect(() => {
+  let mounted = true;
+  let refreshing = false;
+
+  async function loadProducts() {
+    if (refreshing) return;
+    refreshing = true;
+
+    try {
+      const products = await productService.getAll();
+
+      if (mounted) {
+        setAllProducts(products);
+      }
+    } catch (error) {
+      console.error('Failed to refresh storefront:', error);
+    } finally {
+      refreshing = false;
+
+      if (mounted) {
+        setLoading(false);
+      }
+    }
+  }
+
+  function refreshWhenVisible() {
+    if (document.visibilityState === 'visible') {
+      void loadProducts();
+    }
+  }
+
+  void loadProducts();
+
+  const intervalId = window.setInterval(
+    refreshWhenVisible,
+    15_000
+  );
+
+  window.addEventListener('focus', refreshWhenVisible);
+  document.addEventListener(
+    'visibilitychange',
+    refreshWhenVisible
+  );
+
+  return () => {
+    mounted = false;
+    window.clearInterval(intervalId);
+    window.removeEventListener('focus', refreshWhenVisible);
+    document.removeEventListener(
+      'visibilitychange',
+      refreshWhenVisible
+    );
+  };
+}, []);
 
   function handleChange(key: keyof FilterState, value: string) {
     setFilters((prev) => ({ ...prev, [key]: value }));

@@ -117,13 +117,17 @@ export const inventoryService = {
     return response.lowStock;
   },
 
-  async getProductMovements(
-    productId: string,
-  ): Promise<InventoryMovement[]> {
-    return getProductMovements(productId);
-  },
+async getProductMovements(
+  productId: string,
+): Promise<InventoryMovement[]> {
+  return getProductMovements(productId);
+},
 
-  async getMovements(): Promise<InventoryMovement[]> {
-    return [];
-  },
+async getMovements(): Promise<InventoryMovement[]> {
+  const response = await apiClient<BackendInventoryMovement[]>(
+    '/api/inventory/movements'
+  );
+
+  return response.map(mapMovement);
+},
 };
