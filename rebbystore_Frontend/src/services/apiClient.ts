@@ -47,9 +47,18 @@ export async function apiClient<T>(
 
   headers.set("Accept", "application/json");
 
-  if (fetchOptions.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
+
+const isFormDataBody =
+  typeof FormData !== "undefined" &&
+  fetchOptions.body instanceof FormData;
+
+if (isFormDataBody) {
+  // Let the browser generate the multipart boundary.
+  headers.delete("Content-Type");
+} else if (fetchOptions.body && !headers.has("Content-Type")) {
+  headers.set("Content-Type", "application/json");
+}
+
 
   if (authenticated) {
     const token = getAuthToken();

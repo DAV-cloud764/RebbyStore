@@ -10,6 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import java.util.List;
 
 @RestController
@@ -141,15 +143,15 @@ public class ProductController {
     /*
      * DELETE /api/products/{id}
      *
-     * This is a soft delete.
-     * ProductService marks the product INACTIVE.
+     * This is a soft delete. The product remains in the database
+     * but is marked INACTIVE.
      */
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     public ResponseEntity<Void> deactivateProduct(
             @PathVariable Long id
     ) {
         productService.deactivateProduct(id);
-
         return ResponseEntity.noContent().build();
     }
 }

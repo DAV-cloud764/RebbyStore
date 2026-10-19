@@ -9,6 +9,7 @@ import { inventoryService } from '../../services/inventoryService';
 import type { Product } from '../../types/product';
 import { useToast } from '../../contexts/ToastContext';
 import { storeConfig } from '../../config/store';
+import { productImageService } from "../../services/productImageService";
 
 interface OutletCtx { onMenuClick: () => void; }
 
@@ -35,6 +36,38 @@ const EMPTY_FORM: ProductFormData = {
   status: 'active', images: '',
 };
 
+
+async function uploadSelectedImages(
+  productId: string,
+  files: File[],
+  startingSortOrder = 0,
+  alreadyHasPrimary = false,
+): Promise<string[]> {
+  const failedFiles: string[] = [];
+  let sortOrder = startingSortOrder;
+  let hasPrimary = alreadyHasPrimary;
+
+  // Upload sequentially so primary-image updates don't race.
+  for (const file of files) {
+    try {
+      await productImageService.upload(
+        productId,
+        file,
+        sortOrder,
+        !hasPrimary,
+      );
+
+      sortOrder += 1;
+      hasPrimary = true;
+    } catch {
+      failedFiles.push(file.name);
+    }
+  }
+
+  return failedFiles;
+}
+
+
 function productToForm(p: Product): ProductFormData {
   return {
     name: p.name, sku: p.sku, price: String(p.price), description: p.description,
@@ -47,7 +80,10 @@ function productToForm(p: Product): ProductFormData {
 
 function ProductForm({ initialData, onSave, title, onMenuClick }: {
   initialData: ProductFormData;
-  onSave: (data: ProductFormData) => Promise<void>;
+onSave: (
+  data: ProductFormData,
+  imageFiles: File[],
+) => Promise<void>;
   title: string;
   onMenuClick: () => void;
 }) {
@@ -55,15 +91,46 @@ function ProductForm({ initialData, onSave, title, onMenuClick }: {
   const [saving, setSaving] = useState(false);
   const navigate = useNavigate();
 
+const [selectedImages, setSelectedImages] = useState<File[]>([]);
+const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+const [imageError, setImageError] = useState<string | null>(null);
+const [submitError, setSubmitError] = useState<string | null>(null);
+
+useEffect(() => {
+  const urls = selectedImages.map((file) =>
+    URL.createObjectURL(file),
+  );
+
+  setPreviewUrls(urls);
+
+  return () => {
+    urls.forEach((url) => URL.revokeObjectURL(url));
+  };
+}, [selectedImages]);
+
   function handleChange(key: keyof ProductFormData, value: string) {
     setForm((p) => ({ ...p, [key]: value }));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    try { await onSave(form); } finally { setSaving(false); }
+
+async function handleSubmit(e: React.FormEvent) {
+  e.preventDefault();
+  setSaving(true);
+  setSubmitError(null);
+
+  try {
+    await onSave(form, selectedImages);
+  } catch (error) {
+    setSubmitError(
+      error instanceof Error
+        ? error.message
+        : "Unable to save the product.",
+    );
+  } finally {
+    setSaving(false);
   }
+}
+
 
   const categoryOptions = storeConfig.categories.map((c) => ({ value: c.id, label: c.label }));
   const textureOptions = storeConfig.textures.map((t) => ({ value: t.id, label: t.label }));
@@ -130,28 +197,124 @@ function ProductForm({ initialData, onSave, title, onMenuClick }: {
               </div>
             </div>
 
-            {/* Images */}
-<div className="bg-white border border-rs-border p-5 space-y-3">
+
+{/* Product Images */}
+<div className="bg-white border border-rs-border p-5 space-y-4">
   <div>
     <h2 className="font-display font-semibold text-rs-ink">
       Product Images
     </h2>
 
     <p className="mt-1 text-xs text-rs-muted">
-      Product image upload will be available here.
+      Choose one or more product photos. Images will upload
+      after the product is saved.
     </p>
   </div>
 
-  <div className="border border-dashed border-rs-border bg-rs-surface p-8 text-center">
-    <p className="text-sm font-medium text-rs-ink">
-      Upload product photos
-    </p>
+  <div className="border border-dashed border-rs-border bg-rs-surface p-5">
+    <label
+      htmlFor="product-images"
+      className="block text-sm font-medium text-rs-ink"
+    >
+      Select product images
 
-    <p className="mt-1 text-xs text-rs-muted">
-      Image storage integration coming next.
-    </p>
+      <input
+        id="product-images"
+        type="file"
+        accept="image/*"
+        multiple
+        disabled={saving}
+        className="mt-3 block w-full text-sm"
+        onChange={(event) => {
+          const input = event.currentTarget;
+          const files = Array.from(input.files ?? []);
+
+          const validFiles = files.filter(
+            (file) =>
+              file.type.startsWith("image/") &&
+              file.size <= 10 * 1024 * 1024,
+          );
+
+          if (validFiles.length !== files.length) {
+            setImageError(
+              "Only image files up to 10 MB each are accepted.",
+            );
+          } else {
+            setImageError(null);
+          }
+
+          if (validFiles.length > 0) {
+            setSelectedImages((current) => [
+              ...current,
+              ...validFiles,
+            ]);
+          }
+
+          // Allow selecting the same file again if needed.
+          input.value = "";
+        }}
+      />
+    </label>
   </div>
+
+  {imageError && (
+    <p className="text-sm text-red-600" role="alert">
+      {imageError}
+    </p>
+  )}
+
+  {selectedImages.length > 0 && (
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      {selectedImages.map((file, index) => (
+        <div
+          key={`${file.name}-${file.lastModified}-${index}`}
+          className="overflow-hidden border border-rs-border rounded"
+        >
+          {previewUrls[index] && (
+            <img
+              src={previewUrls[index]}
+              alt={file.name}
+              className="h-32 w-full object-cover"
+            />
+          )}
+
+          <div className="p-3 space-y-2">
+            <p
+              className="text-xs text-rs-ink truncate"
+              title={file.name}
+            >
+              {file.name}
+            </p>
+
+            <p className="text-xs text-rs-muted">
+              {(file.size / (1024 * 1024)).toFixed(2)} MB
+            </p>
+
+            <button
+              type="button"
+              disabled={saving}
+              className="text-xs text-red-600 hover:underline disabled:opacity-50"
+              onClick={() => {
+                setSelectedImages((current) =>
+                  current.filter((_, i) => i !== index),
+                );
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+
+  {submitError && (
+    <p className="text-sm text-red-600" role="alert">
+      {submitError}
+    </p>
+  )}
 </div>
+
 
             <div className="flex gap-3">
               <Button type="submit" loading={saving}>
@@ -174,20 +337,24 @@ export function AddProduct() {
   const navigate = useNavigate();
   const { showToast } = useToast();
 
-async function handleSave(data: ProductFormData) {
+
+async function handleSave(
+  data: ProductFormData,
+  imageFiles: File[],
+) {
   const product = await productService.create({
     name: data.name,
     sku: data.sku,
     price: Number(data.price),
     description: data.description,
-    category: data.category as Product['category'],
+    category: data.category as Product["category"],
     color: data.color,
-    texture: data.texture as Product['texture'],
+    texture: data.texture as Product["texture"],
     length: data.length,
-    hairType: data.hairType as Product['hairType'],
+    hairType: data.hairType as Product["hairType"],
     stockQuantity: 0,
     lowStockThreshold: Number(data.lowStockThreshold),
-    status: 'active',
+    status: "active",
     images: [],
   });
 
@@ -200,9 +367,22 @@ async function handleSave(data: ProductFormData) {
     );
   }
 
-  showToast('Product created successfully');
-  navigate('/admin/products');
+  const failedImages = await uploadSelectedImages(
+    product.id,
+    imageFiles,
+  );
+
+  if (failedImages.length > 0) {
+    showToast(
+      `Product created, but ${failedImages.length} image upload(s) failed. Edit the product to retry.`,
+    );
+  } else {
+    showToast("Product created successfully");
+  }
+
+  navigate("/admin/products");
 }
+
 
   return <ProductForm initialData={EMPTY_FORM} onSave={handleSave} title="Add Product" onMenuClick={onMenuClick} />;
 }
@@ -223,21 +403,63 @@ export function EditProduct() {
     });
   }, [id, navigate]);
 
-  async function handleSave(data: ProductFormData) {
-    if (!id) return;
-    await productService.update(id, {
-      name: data.name, sku: data.sku, price: Number(data.price),
-      description: data.description, category: data.category as Product['category'],
-      color: data.color, texture: data.texture as Product['texture'],
-      length: data.length, hairType: data.hairType as Product['hairType'],
-      stockQuantity: Number(data.stockQuantity),
-      lowStockThreshold: Number(data.lowStockThreshold),
-      status: data.status,
-      images: data.images.split('\n').map((s) => s.trim()).filter(Boolean),
-    });
-    showToast('Product updated successfully');
-    navigate('/admin/products');
+
+async function handleSave(
+  data: ProductFormData,
+  imageFiles: File[],
+) {
+  if (!id) return;
+
+  await productService.update(id, {
+    name: data.name,
+    sku: data.sku,
+    price: Number(data.price),
+    description: data.description,
+    category: data.category as Product["category"],
+    color: data.color,
+    texture: data.texture as Product["texture"],
+    length: data.length,
+    hairType: data.hairType as Product["hairType"],
+    stockQuantity: Number(data.stockQuantity),
+    lowStockThreshold: Number(data.lowStockThreshold),
+    status: data.status,
+  });
+
+  let failedImages: string[] = [];
+
+  if (imageFiles.length > 0) {
+    const existingImages =
+      await productImageService.getByProduct(id);
+
+    const nextSortOrder =
+      existingImages.reduce(
+        (max, image) => Math.max(max, image.sortOrder),
+        -1,
+      ) + 1;
+
+    const hasPrimary = existingImages.some(
+      (image) => image.primary,
+    );
+
+    failedImages = await uploadSelectedImages(
+      id,
+      imageFiles,
+      nextSortOrder,
+      hasPrimary,
+    );
   }
+
+  if (failedImages.length > 0) {
+    showToast(
+      `Product updated, but ${failedImages.length} image upload(s) failed. Edit the product to retry.`,
+    );
+  } else {
+    showToast("Product updated successfully");
+  }
+
+  navigate("/admin/products");
+}
+
 
   if (!initial) {
     return (
