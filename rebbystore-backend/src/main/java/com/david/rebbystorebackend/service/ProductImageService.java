@@ -63,6 +63,10 @@ public class ProductImageService {
                 .findByProductIdOrderBySortOrderAsc(productId);
     }
 
+    public void validateProductExists(Long productId) {
+        ensureProductExists(productId);
+    }
+
     public ProductImage setPrimaryImage(
             Long productId,
             Long imageId

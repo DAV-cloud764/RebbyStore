@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import com.david.rebbystorebackend.domain.entity.ProductStatus;
 
 @Service
 @Transactional(readOnly = true)
@@ -138,18 +139,22 @@ public class ReportingService {
     }
 
     public InventorySummary getInventorySummary() {
-        List<Product> products =
-                productRepository.findAll();
+        // All products are retained for physical stock accounting.
+        List<Product> allProducts = productRepository.findAll();
 
-        long totalProducts = products.size();
+        // Only active products count toward the sellable catalog.
+        List<Product> activeProducts =
+                productRepository.findByStatus(ProductStatus.ACTIVE);
 
-        long totalUnitsInStock = products.stream()
+        long totalProducts = activeProducts.size();
+
+        long totalUnitsInStock = allProducts.stream()
                 .map(Product::getStockQuantity)
                 .filter(stock -> stock != null)
                 .mapToLong(Integer::longValue)
                 .sum();
 
-        long lowStockProducts = products.stream()
+        long lowStockProducts = activeProducts.stream()
                 .filter(product ->
                         product.getStockQuantity()
                                 <= product.getLowStockThreshold()

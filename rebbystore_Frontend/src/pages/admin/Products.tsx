@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
-import { Plus, Edit2, Eye, Search } from 'lucide-react';
+import { Plus, Edit2, Eye, Search, Trash2 } from 'lucide-react';
 import { AdminHeader } from '../../components/admin/AdminSidebar';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -8,6 +8,7 @@ import { productService } from '../../services/productService';
 import { getStockStatus } from '../../types/product';
 import type { Product } from '../../types/product';
 import { formatPrice } from '../../utils/formatting';
+import { useToast } from '../../contexts/ToastContext';
 
 interface OutletCtx { onMenuClick: () => void; }
 
@@ -16,7 +17,44 @@ export default function Products() {
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { showToast } = useToast();
+
   useEffect(() => { productService.getAll().then(setProducts); }, []);
+
+  async function handleRemove(product: Product) {
+  const confirmed = window.confirm(
+    `Remove "${product.name}" from the catalog?\n\n` +
+    'The product will be deactivated, not permanently deleted. ' +
+    'It will no longer appear in the customer-facing catalog.'
+  );
+
+  if (!confirmed) return;
+
+  setDeletingId(product.id);
+
+  try {
+    await productService.delete(product.id);
+
+    setProducts((current) =>
+      current.filter((item) => item.id !== product.id)
+    );
+
+    showToast(
+      `${product.name} was removed from the catalog.`,
+      'success'
+    );
+  } catch (error) {
+    showToast(
+      error instanceof Error
+        ? error.message
+        : 'Failed to remove the product. Please try again.',
+      'error'
+    );
+  } finally {
+    setDeletingId(null);
+  }
+}
 
   const filtered = products.filter(
     (p) => p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
@@ -58,7 +96,7 @@ export default function Products() {
                 <th>Stock</th>
                 <th>Stock Status</th>
                 <th>Status</th>
-                <th></th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -105,6 +143,21 @@ export default function Products() {
                         <Link to={`/admin/products/${p.id}/edit`} className="p-1.5 text-rs-muted hover:text-rs-ink transition-colors" title="Edit product">
                           <Edit2 size={14} />
                         </Link>
+
+<button
+  type="button"
+  onClick={() => void handleRemove(p)}
+  disabled={deletingId !== null}
+  className="p-1.5 text-red-600 hover:text-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+  title="Remove from catalog"
+  aria-label={`Remove ${p.name} from catalog`}
+>
+  {deletingId === p.id ? (
+    <span className="text-xs">Removing…</span>
+  ) : (
+    <Trash2 size={14} />
+  )}
+</button>
                       </div>
                     </td>
                   </tr>

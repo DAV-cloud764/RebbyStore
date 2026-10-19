@@ -26,6 +26,10 @@ import { getStockStatus } from '../../types/product';
 import type { Product } from '../../types/product';
 import type { Order } from '../../types/order';
 
+import { inventoryService } from '../../services/inventoryService';
+import { StockMovementTable } from '../../components/admin/StockMovementTable';
+import type { InventoryMovement } from '../../types/inventory';
+
 import type {
   InventorySummary,
   SalesSummary,
@@ -57,31 +61,101 @@ export default function Dashboard() {
   const [purchaseSummary, setPurchaseSummary] =
     useState<PurchaseSummary | null>(null);
 
-  useEffect(() => {
-    async function loadDashboard() {
+  const [movements, setMovements] = useState<InventoryMovement[]>([]);
+
+useEffect(() => {
+  let mounted = true;
+  let refreshing = false;
+
+  async function loadDashboard() {
+    if (refreshing) return;
+    refreshing = true;
+
+    try {
+      const results = await Promise.allSettled([
+        productService.getAll(),
+        orderService.getAll(),
+        reportingService.getInventorySummary(),
+        reportingService.getSalesSummary(),
+        reportingService.getPurchaseSummary(),
+        inventoryService.getMovements(),
+      ]);
+
+      if (!mounted) return;
+
       const [
         productsResult,
         ordersResult,
         inventoryResult,
         salesResult,
         purchaseResult,
-      ] = await Promise.all([
-        productService.getAll(),
-        orderService.getAll(),
-        reportingService.getInventorySummary(),
-        reportingService.getSalesSummary(),
-        reportingService.getPurchaseSummary(),
-      ]);
+        movementsResult,
+      ] = results;
 
-      setProducts(productsResult);
-      setOrders(ordersResult);
-      setInventorySummary(inventoryResult);
-      setSalesSummary(salesResult);
-      setPurchaseSummary(purchaseResult);
+      if (productsResult.status === 'fulfilled') {
+        setProducts(productsResult.value);
+      } else {
+        console.error('Failed to load products:', productsResult.reason);
+      }
+
+      if (ordersResult.status === 'fulfilled') {
+        setOrders(ordersResult.value);
+      } else {
+        console.error('Failed to load orders:', ordersResult.reason);
+      }
+
+      if (inventoryResult.status === 'fulfilled') {
+        setInventorySummary(inventoryResult.value);
+      } else {
+        console.error('Failed to load inventory summary:', inventoryResult.reason);
+      }
+
+      if (salesResult.status === 'fulfilled') {
+        setSalesSummary(salesResult.value);
+      } else {
+        console.error('Failed to load sales summary:', salesResult.reason);
+      }
+
+      if (purchaseResult.status === 'fulfilled') {
+        setPurchaseSummary(purchaseResult.value);
+      } else {
+        console.error('Failed to load purchase summary:', purchaseResult.reason);
+      }
+
+      if (movementsResult.status === 'fulfilled') {
+        setMovements(movementsResult.value);
+      } else {
+        console.error('Failed to load stock movements:', movementsResult.reason);
+      }
+    } finally {
+      refreshing = false;
     }
+  }
 
-    void loadDashboard();
-  }, []);
+  function refreshWhenVisible() {
+    if (document.visibilityState === 'visible') {
+      void loadDashboard();
+    }
+  }
+
+  void loadDashboard();
+
+  const intervalId = window.setInterval(
+    refreshWhenVisible,
+    15_000
+  );
+
+  window.addEventListener('focus', refreshWhenVisible);
+  document.addEventListener('visibilitychange', refreshWhenVisible);
+
+  return () => {
+    mounted = false;
+
+    window.clearInterval(intervalId);
+    window.removeEventListener('focus', refreshWhenVisible);
+    document.removeEventListener('visibilitychange', refreshWhenVisible);
+  };
+}, []);
 
   const outOfStock = products.filter(
     (product) =>
@@ -118,9 +192,7 @@ export default function Dashboard() {
 
             <StatCard
               label="Current Stock"
-              value={
-                inventorySummary?.totalUnitsInStock ?? 0
-              }
+              value={products.length}
               sub="Total units"
               icon={<Layers size={18} />}
             />
@@ -189,6 +261,30 @@ export default function Dashboard() {
             </div>
           </div>
         </section>
+
+      {/* Recent Stock Movements */}
+    <section className="bg-white border border-rs-border">
+     <div className="flex items-center justify-between px-5 py-4 border-b border-rs-border">
+    <h2 className="font-display font-semibold text-rs-ink">
+      Recent Stock Movements
+    </h2>
+
+    <Link
+      to="/admin/inventory/movements"
+      className="text-xs text-rs-muted hover:text-rs-ink"
+    >
+      View History →
+    </Link>
+      </div>
+
+  {movements.length > 0 ? (
+    <StockMovementTable movements={movements.slice(0, 5)} />
+  ) : (
+    <p className="text-center py-8 text-sm text-rs-muted">
+      No stock movements recorded yet.
+    </p>
+  )}
+</section>
 
         {/* Operational Summary */}
         <section>

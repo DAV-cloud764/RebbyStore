@@ -252,6 +252,12 @@ public class InventoryService {
                 .findByProductIdOrderByCreatedAtDesc(productId);
     }
 
+    @Transactional(readOnly = true)
+    public List<InventoryMovement> getMovements() {
+        return inventoryMovementRepository
+                .findAllByOrderByCreatedAtDesc();
+    }
+
     private Product getProductForUpdate(Long productId) {
         return productRepository.findByIdForUpdate(productId)
                 .orElseThrow(() ->

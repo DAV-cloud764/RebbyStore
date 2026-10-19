@@ -13,16 +13,25 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.util.List;
 
+import com.david.rebbystorebackend.service.CloudinaryService;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+
 @RestController
 @RequestMapping("/api/products/{productId}/images")
 public class ProductImageController {
 
     private final ProductImageService productImageService;
+    private final CloudinaryService cloudinaryService;
 
     public ProductImageController(
-            ProductImageService productImageService
+            ProductImageService productImageService,
+            CloudinaryService cloudinaryService
     ) {
         this.productImageService = productImageService;
+        this.cloudinaryService = cloudinaryService;
     }
 
     /*
@@ -72,6 +81,44 @@ public class ProductImageController {
         return ResponseEntity
                 .created(location)
                 .body(response);
+    }
+
+
+    @PostMapping(
+            value = "/upload",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+    public ResponseEntity<ProductImageResponse> uploadImage(
+            @PathVariable Long productId,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(defaultValue = "0") Integer sortOrder,
+            @RequestParam(defaultValue = "false") boolean primary
+    ) throws IOException {
+
+        // Verify the product exists before uploading the file.
+        productImageService.validateProductExists(productId);
+
+        // Upload the image and obtain its Cloudinary URL.
+        String imageUrl =
+                cloudinaryService.uploadProductImage(file);
+
+        // Save the returned URL using the existing persistence logic.
+        ProductImage image = productImageService.addImage(
+                productId,
+                imageUrl,
+                sortOrder,
+                primary
+        );
+
+        URI location = URI.create(
+                "/api/products/" + productId
+                        + "/images/" + image.getId()
+        );
+
+        return ResponseEntity
+                .created(location)
+                .body(ProductImageResponse.from(image));
     }
 
     /*

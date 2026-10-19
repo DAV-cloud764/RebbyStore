@@ -53,6 +53,17 @@ public class InventoryController {
         );
     }
 
+    @GetMapping("/movements")
+    public ResponseEntity<List<InventoryMovementResponse>> getMovements() {
+        List<InventoryMovementResponse> response =
+                inventoryService.getMovements()
+                        .stream()
+                        .map(InventoryMovementResponse::from)
+                        .toList();
+
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/{productId}/adjust")
     public ResponseEntity<InventoryMovementResponse> adjustStock(
             @PathVariable Long productId,
