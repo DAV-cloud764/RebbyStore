@@ -404,26 +404,53 @@ export function EditProduct() {
   }, [id, navigate]);
 
 
+
 async function handleSave(
   data: ProductFormData,
   imageFiles: File[],
 ) {
   if (!id) return;
 
+  const targetStock = Number(data.stockQuantity);
+
+  if (!Number.isInteger(targetStock) || targetStock < 0) {
+    throw new Error(
+      'Stock must be a whole number greater than or equal to zero.',
+    );
+  }
+
+  // Read the stock quantity actually saved in the backend.
+  const currentStock =
+    await inventoryService.getCurrentStock(id);
+
+  // Save the ordinary product details.
+  // Stock is managed by InventoryService, not ProductService.
   await productService.update(id, {
     name: data.name,
     sku: data.sku,
     price: Number(data.price),
     description: data.description,
-    category: data.category as Product["category"],
+    category: data.category as Product['category'],
     color: data.color,
-    texture: data.texture as Product["texture"],
+    texture: data.texture as Product['texture'],
     length: data.length,
-    hairType: data.hairType as Product["hairType"],
-    stockQuantity: Number(data.stockQuantity),
+    hairType: data.hairType as Product['hairType'],
     lowStockThreshold: Number(data.lowStockThreshold),
     status: data.status,
   });
+
+  // Apply the stock difference and record the movement.
+  if (targetStock > currentStock) {
+    await inventoryService.stockIn(
+      id,
+      targetStock - currentStock,
+    );
+  } else if (targetStock < currentStock) {
+    await inventoryService.stockOut(
+      id,
+      currentStock - targetStock,
+    );
+  }
 
   let failedImages: string[] = [];
 
@@ -454,11 +481,16 @@ async function handleSave(
       `Product updated, but ${failedImages.length} image upload(s) failed. Edit the product to retry.`,
     );
   } else {
-    showToast("Product updated successfully");
+    showToast(
+      targetStock !== currentStock
+        ? `Product updated. Stock changed from ${currentStock} to ${targetStock}.`
+        : 'Product updated successfully',
+    );
   }
 
-  navigate("/admin/products");
+  navigate('/admin/products');
 }
+
 
 
   if (!initial) {

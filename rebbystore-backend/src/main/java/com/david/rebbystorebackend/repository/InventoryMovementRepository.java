@@ -5,9 +5,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
-public interface InventoryMovementRepository extends JpaRepository<InventoryMovement, Long> {
+import org.springframework.data.jpa.repository.EntityGraph;
 
-    List<InventoryMovement> findByProductIdOrderByCreatedAtDesc(Long productId);
+
+public interface InventoryMovementRepository extends JpaRepository<InventoryMovement, Long> {
 
     List<InventoryMovement> findByOrderId(Long orderId);
 
@@ -15,5 +16,12 @@ public interface InventoryMovementRepository extends JpaRepository<InventoryMove
 
     List<InventoryMovement> findByProductId(Long productId);
 
+    @EntityGraph(attributePaths = {"product", "order", "purchase"})
+    List<InventoryMovement> findByProductIdOrderByCreatedAtDesc(
+            Long productId
+    );
+
+    @EntityGraph(attributePaths = {"product", "order", "purchase"})
     List<InventoryMovement> findAllByOrderByCreatedAtDesc();
+
 }

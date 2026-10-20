@@ -16,7 +16,7 @@ interface BackendInventoryMovement {
 
 interface BackendStockResponse {
   productId: number;
-  stock: number;
+  stockQuantity: number;
 }
 
 interface BackendLowStockResponse {
@@ -106,7 +106,7 @@ export const inventoryService = {
       `/api/inventory/${Number(productId)}/stock`,
     );
 
-    return response.stock;
+    return response.stockQuantity;
   },
 
   async isLowStock(productId: string): Promise<boolean> {
