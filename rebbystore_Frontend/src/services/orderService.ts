@@ -38,15 +38,14 @@ interface BackendOrderItem {
   subtotal: number;
 }
 
-interface BackendCustomer {
-  id: number;
-  fullName: string;
-  phone: string;
-  email: string;
-  totalOrders: number;
-  totalSpent: number;
-  createdAt: string;
-  updatedAt: string;
+interface GuestOrderConfirmationResponse {
+  order: BackendOrder;
+  items: BackendOrderItem[];
+}
+
+interface GuestCheckoutResponse {
+  confirmationToken: string;
+  confirmation: GuestOrderConfirmationResponse;
 }
 
 interface CheckoutCustomerInput {
@@ -84,6 +83,15 @@ const BACKEND_STATUSES = [
   'DELIVERED',
   'CANCELLED',
 ] as const;
+
+const GUEST_CONFIRMATION_TOKEN_PREFIX =
+  'rebbystore_guest_confirmation_token:';
+
+function guestConfirmationTokenKey(
+  orderId: string | number
+): string {
+  return `${GUEST_CONFIRMATION_TOKEN_PREFIX}${orderId}`;
+}
 
 function mapOrderStatus(
   status: BackendOrder['status']
@@ -161,64 +169,6 @@ async function getItems(orderId: string): Promise<BackendOrderItem[]> {
   );
 }
 
-async function findCustomerByPhone(
-  phone: string
-): Promise<BackendCustomer | undefined> {
-  try {
-    return await apiClient<BackendCustomer>(
-      `/api/customers/phone/${encodeURIComponent(phone)}`
-    );
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-async function findCustomerByEmail(
-  email: string
-): Promise<BackendCustomer | undefined> {
-  try {
-    return await apiClient<BackendCustomer>(
-      `/api/customers/email/${encodeURIComponent(email)}`
-    );
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-async function resolveCustomer(
-  customerInput: CheckoutCustomerInput
-): Promise<BackendCustomer> {
-  const existingByPhone = await findCustomerByPhone(
-    customerInput.phone
-  );
-
-  if (existingByPhone) {
-    return existingByPhone;
-  }
-
-  const existingByEmail = await findCustomerByEmail(
-    customerInput.email
-  );
-
-  if (existingByEmail) {
-    return existingByEmail;
-  }
-
-  return apiClient<BackendCustomer>('/api/customers', {
-    method: 'POST',
-    body: JSON.stringify({
-      fullName: customerInput.fullName.trim(),
-      phone: customerInput.phone.replace(/\s/g, ''),
-      email: customerInput.email.trim(),
-    }),
-  });
-}
 
 function statusEndpoint(status: OrderStatus): string {
   switch (status) {
@@ -265,23 +215,48 @@ export const orderService = {
     );
   },
 
-  async getById(id: string): Promise<Order | undefined> {
+async getById(id: string): Promise<Order | undefined> {
+  const tokenKey = guestConfirmationTokenKey(id);
+  const guestToken = sessionStorage.getItem(tokenKey);
+
+  if (guestToken) {
     try {
-      const backendOrder = await apiClient<BackendOrder>(
-        `/api/orders/${id}`
+      const confirmation =
+        await apiClient<GuestOrderConfirmationResponse>(
+          `/api/checkout/confirmation/${encodeURIComponent(guestToken)}`,
+          { authenticated: false }
+        );
+
+      return mapOrder(
+        confirmation.order,
+        confirmation.items
       );
-
-      const items = await getItems(id);
-
-      return mapOrder(backendOrder, items);
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
+        sessionStorage.removeItem(tokenKey);
         return undefined;
       }
 
       throw error;
     }
-  },
+  }
+
+  try {
+    const backendOrder = await apiClient<BackendOrder>(
+      `/api/orders/${id}`
+    );
+
+    const items = await getItems(id);
+
+    return mapOrder(backendOrder, items);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return undefined;
+    }
+
+    throw error;
+  }
+},
 
   async getByStatus(status: OrderStatus): Promise<Order[]> {
     const backendStatus =
@@ -302,64 +277,47 @@ export const orderService = {
   },
 
   async create(data: CheckoutOrderInput): Promise<Order> {
-    if (data.items.length === 0) {
-      throw new Error('Cannot create an order with no items');
+  if (data.items.length === 0) {
+    throw new Error('Cannot create an order with no items');
+  }
+
+  const result = await apiClient<GuestCheckoutResponse>(
+    '/api/checkout',
+    {
+      method: 'POST',
+      authenticated: false,
+      body: JSON.stringify({
+        customer: {
+          fullName: data.customer.fullName.trim(),
+          phone: data.customer.phone.trim(),
+          email: data.customer.email.trim(),
+        },
+        delivery: {
+          address: data.delivery.address.trim(),
+          city: data.delivery.city.trim(),
+          region: data.delivery.region.trim(),
+          notes: data.delivery.notes?.trim() || null,
+        },
+        items: data.items.map((item) => ({
+          productId: Number(item.product.id),
+          quantity: item.quantity,
+        })),
+      }),
     }
+  );
 
-    const customer = await resolveCustomer(data.customer);
+  const orderId = String(result.confirmation.order.id);
 
-    const backendOrder = await apiClient<BackendOrder>(
-      '/api/orders',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          customerId: customer.id,
-          deliveryAddress: data.delivery.address.trim(),
-          deliveryCity: data.delivery.city.trim(),
-          deliveryRegion: data.delivery.region.trim(),
-          deliveryNotes: data.delivery.notes?.trim() || null,
-          paymentMethod: 'CASH_ON_DELIVERY',
-        }),
-      }
-    );
+  sessionStorage.setItem(
+    guestConfirmationTokenKey(orderId),
+    result.confirmationToken
+  );
 
-    try {
-      for (const item of data.items) {
-        await apiClient<BackendOrderItem>(
-          `/api/orders/${backendOrder.id}/items`,
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              productId: Number(item.product.id),
-              quantity: item.quantity,
-            }),
-          }
-        );
-      }
-    } catch (error) {
-      // Clean up the incomplete pending order when possible.
-      try {
-        await apiClient(
-          `/api/orders/${backendOrder.id}/cancel`,
-          {
-            method: 'POST',
-          }
-        );
-      } catch {
-        // Preserve the original item/order error.
-      }
-
-      throw error;
-    }
-
-    const finalOrder = await apiClient<BackendOrder>(
-      `/api/orders/${backendOrder.id}`
-    );
-
-    const items = await getItems(String(finalOrder.id));
-
-    return mapOrder(finalOrder, items);
-  },
+  return mapOrder(
+    result.confirmation.order,
+    result.confirmation.items
+  );
+},
 
   async updateStatus(
     id: string,

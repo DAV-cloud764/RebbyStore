@@ -6,6 +6,7 @@ import com.david.rebbystorebackend.dto.purchase.PurchaseCreateRequest;
 import com.david.rebbystorebackend.dto.purchase.PurchaseItemCreateRequest;
 import com.david.rebbystorebackend.dto.purchase.PurchaseItemResponse;
 import com.david.rebbystorebackend.dto.purchase.PurchaseResponse;
+import com.david.rebbystorebackend.dto.purchase.PurchaseUpdateRequest;
 import com.david.rebbystorebackend.service.PurchaseService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -44,10 +45,22 @@ public class PurchaseController {
             @PathVariable Long id
     ) {
         Purchase purchase = purchaseService.getById(id);
+        return ResponseEntity.ok(PurchaseResponse.from(purchase));
+    }
 
-        return ResponseEntity.ok(
-                PurchaseResponse.from(purchase)
+    @PutMapping("/{id}")
+    public ResponseEntity<PurchaseResponse> updatePurchase(
+            @PathVariable Long id,
+            @Valid @RequestBody PurchaseUpdateRequest request
+    ) {
+        Purchase purchase = purchaseService.update(
+                id,
+                request.supplierId(),
+                request.purchaseDate(),
+                request.notes(),
+                request.items()
         );
+        return ResponseEntity.ok(PurchaseResponse.from(purchase));
     }
 
     @GetMapping("/number/{purchaseNumber}")
@@ -55,10 +68,7 @@ public class PurchaseController {
             @PathVariable String purchaseNumber
     ) {
         Purchase purchase = purchaseService.getByPurchaseNumber(purchaseNumber);
-
-        return ResponseEntity.ok(
-                PurchaseResponse.from(purchase)
-        );
+        return ResponseEntity.ok(PurchaseResponse.from(purchase));
     }
 
     @GetMapping("/supplier/{supplierId}")
@@ -70,7 +80,6 @@ public class PurchaseController {
                 .stream()
                 .map(PurchaseResponse::from)
                 .toList();
-
         return ResponseEntity.ok(response);
     }
 
@@ -83,7 +92,6 @@ public class PurchaseController {
                 .stream()
                 .map(PurchaseResponse::from)
                 .toList();
-
         return ResponseEntity.ok(response);
     }
 
@@ -96,7 +104,6 @@ public class PurchaseController {
                 .stream()
                 .map(PurchaseItemResponse::from)
                 .toList();
-
         return ResponseEntity.ok(response);
     }
 
@@ -111,51 +118,30 @@ public class PurchaseController {
                 request.quantity(),
                 request.unitCost()
         );
-
-        return ResponseEntity.ok(
-                PurchaseItemResponse.from(item)
-        );
+        return ResponseEntity.ok(PurchaseItemResponse.from(item));
     }
 
     @DeleteMapping("/items/{itemId}")
-    public ResponseEntity<Void> removePurchaseItem(
-            @PathVariable Long itemId
-    ) {
+    public ResponseEntity<Void> removePurchaseItem(@PathVariable Long itemId) {
         purchaseService.removeItem(itemId);
-
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/order")
-    public ResponseEntity<PurchaseResponse> orderPurchase(
-            @PathVariable Long id
-    ) {
+    public ResponseEntity<PurchaseResponse> orderPurchase(@PathVariable Long id) {
         Purchase purchase = purchaseService.order(id);
-
-        return ResponseEntity.ok(
-                PurchaseResponse.from(purchase)
-        );
+        return ResponseEntity.ok(PurchaseResponse.from(purchase));
     }
 
     @PostMapping("/{id}/receive")
-    public ResponseEntity<PurchaseResponse> receivePurchase(
-            @PathVariable Long id
-    ) {
+    public ResponseEntity<PurchaseResponse> receivePurchase(@PathVariable Long id) {
         Purchase purchase = purchaseService.receive(id);
-
-        return ResponseEntity.ok(
-                PurchaseResponse.from(purchase)
-        );
+        return ResponseEntity.ok(PurchaseResponse.from(purchase));
     }
 
     @PostMapping("/{id}/cancel")
-    public ResponseEntity<PurchaseResponse> cancelPurchase(
-            @PathVariable Long id
-    ) {
+    public ResponseEntity<PurchaseResponse> cancelPurchase(@PathVariable Long id) {
         Purchase purchase = purchaseService.cancel(id);
-
-        return ResponseEntity.ok(
-                PurchaseResponse.from(purchase)
-        );
+        return ResponseEntity.ok(PurchaseResponse.from(purchase));
     }
 }

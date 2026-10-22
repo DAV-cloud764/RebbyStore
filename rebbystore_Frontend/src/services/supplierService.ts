@@ -20,6 +20,13 @@ interface BackendSupplier {
   updatedAt: string;
 }
 
+export interface CreateSupplierInput {
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+}
+
 function mapSupplier(supplier: BackendSupplier): Supplier {
   return {
     id: String(supplier.id),
@@ -34,17 +41,25 @@ function mapSupplier(supplier: BackendSupplier): Supplier {
 
 export const supplierService = {
   async getAll(): Promise<Supplier[]> {
-    const response = await apiClient<BackendSupplier[]>(
-      '/api/suppliers',
-    );
-
+    const response = await apiClient<BackendSupplier[]>('/api/suppliers');
     return response.map(mapSupplier);
   },
 
   async getById(id: string): Promise<Supplier> {
-    const response = await apiClient<BackendSupplier>(
-      `/api/suppliers/${Number(id)}`,
-    );
+    const response = await apiClient<BackendSupplier>(`/api/suppliers/${Number(id)}`);
+    return mapSupplier(response);
+  },
+
+  async create(data: CreateSupplierInput): Promise<Supplier> {
+    const response = await apiClient<BackendSupplier>('/api/suppliers', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: data.name.trim(),
+        phone: data.phone?.trim() || null,
+        email: data.email?.trim() || null,
+        address: data.address?.trim() || null,
+      }),
+    });
 
     return mapSupplier(response);
   },
