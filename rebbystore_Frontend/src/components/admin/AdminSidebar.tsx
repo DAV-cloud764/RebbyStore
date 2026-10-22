@@ -7,6 +7,7 @@ import {
   Layers,
   BarChart3,
   ShoppingCart,
+  ClipboardList,
   Users,
   Settings,
   ChevronDown,
@@ -52,6 +53,14 @@ const navItems: NavItem[] = [
       { label: 'Orders', to: '/admin/orders' },
     ],
   },
+
+  {
+  label: 'Reports',
+  icon: <ClipboardList size={16} />,
+  children: [
+    { label: 'Activity Audit', to: '/admin/activity-audit' },
+  ],
+},
   { label: 'Customers', to: '/admin/customers', icon: <Users size={16} /> },
   { label: 'Settings', to: '/admin/settings', icon: <Settings size={16} /> },
 ];

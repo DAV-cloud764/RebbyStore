@@ -23,6 +23,7 @@ import Settings from './pages/admin/Settings';
 import NotFound from './pages/NotFound';
 import Login from "./pages/auth/Login";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import ActivityAudit from './pages/admin/ActivityAudit';
 
 export default function App() {
   return (
@@ -56,6 +57,10 @@ export default function App() {
       </ProtectedRoute>
     }
   >
+    <Route
+  path="activity-audit"
+  element={<ActivityAudit />}
+/>
     <Route index element={<Dashboard />} />
     <Route path="products" element={<Products />} />
     <Route path="products/new" element={<AddProduct />} />

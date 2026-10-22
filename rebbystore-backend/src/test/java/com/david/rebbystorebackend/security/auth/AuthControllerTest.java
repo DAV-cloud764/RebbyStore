@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.web.servlet.MockMvc;
 import com.david.rebbystorebackend.security.jwt.JwtAuthenticationFilter;
+import com.david.rebbystorebackend.service.AuditActivityLogService;
 
 import java.util.List;
 
@@ -29,6 +30,9 @@ class AuthControllerTest {
 
     @MockitoBean
     private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @MockitoBean
+    private AuditActivityLogService auditActivityLogService;
 
     @Test
     void shouldLoginSuccessfully() throws Exception {
