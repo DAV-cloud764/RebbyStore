@@ -111,6 +111,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
     ) {
         String path = request.getRequestURI();
 
+        if ("/api/checkout".equals(path)
+                && "POST".equalsIgnoreCase(request.getMethod())) {
+            return RateLimitType.CHECKOUT;
+        }
+
+        if (path.startsWith("/api/checkout/confirmation/")
+                && "GET".equalsIgnoreCase(request.getMethod())) {
+            return RateLimitType.CHECKOUT;
+        }
+
         if ("/api/auth/login".equals(path)
                 && "POST".equalsIgnoreCase(request.getMethod())) {
             return RateLimitType.LOGIN;

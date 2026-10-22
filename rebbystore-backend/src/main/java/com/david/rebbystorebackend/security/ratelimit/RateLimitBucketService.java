@@ -44,6 +44,7 @@ public class RateLimitBucketService {
         Bucket bucket = switch (type) {
             case LOGIN -> clientBuckets.loginBucket();
             case GENERAL -> clientBuckets.generalBucket();
+            case CHECKOUT -> clientBuckets.checkoutBucket();
         };
 
         ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
@@ -96,7 +97,8 @@ public class RateLimitBucketService {
 
             ClientBuckets created = new ClientBuckets(
                     createBucket(properties.login()),
-                    createBucket(properties.general())
+                    createBucket(properties.general()),
+                    createBucket(properties.checkout())
             );
 
             clients.put(clientKey, created);
@@ -127,6 +129,7 @@ public class RateLimitBucketService {
         return switch (type) {
             case LOGIN -> properties.login();
             case GENERAL -> properties.general();
+            case CHECKOUT -> properties.checkout();
         };
     }
 
@@ -188,15 +191,18 @@ public class RateLimitBucketService {
 
         private final Bucket loginBucket;
         private final Bucket generalBucket;
+        private final Bucket checkoutBucket;
 
         private volatile long lastAccessTime;
 
         private ClientBuckets(
                 Bucket loginBucket,
-                Bucket generalBucket
+                Bucket generalBucket,
+                Bucket checkoutBucket
         ) {
             this.loginBucket = loginBucket;
             this.generalBucket = generalBucket;
+            this.checkoutBucket = checkoutBucket;
             this.lastAccessTime =
                     System.currentTimeMillis();
         }
@@ -209,6 +215,11 @@ public class RateLimitBucketService {
         private Bucket generalBucket() {
             touch();
             return generalBucket;
+        }
+
+        private Bucket checkoutBucket() {
+            touch();
+            return checkoutBucket;
         }
 
         private void touch() {

@@ -74,6 +74,16 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login").permitAll()
 
+                        // Guest checkout is public; customer management remains protected.
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/checkout"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/checkout/confirmation/**"
+                        ).permitAll()
+
                                 .requestMatchers(
                                         "/actuator/health",
                                         "/actuator/health/**"

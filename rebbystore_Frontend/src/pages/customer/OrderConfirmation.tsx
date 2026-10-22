@@ -12,12 +12,16 @@ export default function OrderConfirmation() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!id) return;
-    orderService.getById(id).then((o) => {
-      setOrder(o ?? null);
-      setLoading(false);
-    });
-  }, [id]);
+  if (!id) {
+    setLoading(false);
+    return;
+  }
+
+  orderService.getById(id)
+    .then((order) => setOrder(order ?? null))
+    .catch(() => setOrder(null))
+    .finally(() => setLoading(false));
+}, [id]);
 
   if (loading) {
     return (

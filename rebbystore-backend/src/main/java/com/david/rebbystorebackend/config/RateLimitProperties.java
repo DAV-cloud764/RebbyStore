@@ -7,6 +7,7 @@ public record RateLimitProperties(
         boolean enabled,
         Rule login,
         Rule general,
+        Rule checkout,
         int maxClients,
         int cleanupMinutes
 ) {

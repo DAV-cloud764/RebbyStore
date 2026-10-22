@@ -47,10 +47,14 @@ interface CreateAndReceivePurchaseInput {
   items: AddPurchaseItemInput[];
 }
 
-function mapPurchase(
-  purchase: BackendPurchase,
-  items: PurchaseItem[] = [],
-): Purchase {
+export interface UpdatePurchaseInput {
+  supplierId: string;
+  purchaseDate: string;
+  notes?: string;
+  items: AddPurchaseItemInput[];
+}
+
+function mapPurchase(purchase: BackendPurchase, items: PurchaseItem[] = []): Purchase {
   return {
     id: String(purchase.id),
     supplierId: String(purchase.supplierId),
@@ -64,9 +68,7 @@ function mapPurchase(
   };
 }
 
-function mapPurchaseItem(
-  item: BackendPurchaseItem,
-): PurchaseItem {
+function mapPurchaseItem(item: BackendPurchaseItem): PurchaseItem {
   return {
     id: String(item.id),
     productId: String(item.productId),
@@ -79,140 +81,103 @@ function mapPurchaseItem(
 }
 
 async function getItems(purchaseId: string): Promise<PurchaseItem[]> {
-  const response = await apiClient<BackendPurchaseItem[]>(
-    `/api/purchases/${Number(purchaseId)}/items`,
-  );
-
+  const response = await apiClient<BackendPurchaseItem[]>(`/api/purchases/${Number(purchaseId)}/items`);
   return response.map(mapPurchaseItem);
 }
 
-async function getPurchasesByStatus(
-  status: PurchaseStatus,
-): Promise<BackendPurchase[]> {
-  return apiClient<BackendPurchase[]>(
-    `/api/purchases/status/${status}`,
-  );
+async function getPurchasesByStatus(status: PurchaseStatus): Promise<BackendPurchase[]> {
+  return apiClient<BackendPurchase[]>(`/api/purchases/status/${status}`);
+}
+
+function toItemPayload(items: AddPurchaseItemInput[]) {
+  return items.map((item) => ({
+    productId: Number(item.productId),
+    quantity: item.quantity,
+    unitCost: item.unitCost,
+  }));
 }
 
 export const purchaseService = {
   async getAll(): Promise<Purchase[]> {
-    const statuses: PurchaseStatus[] = [
-      'draft',
-      'ordered',
-      'received',
-      'cancelled',
-    ];
-
-    const groups = await Promise.all(
-      statuses.map((status) => getPurchasesByStatus(status)),
-    );
-
+    const statuses: PurchaseStatus[] = ['draft', 'ordered', 'received', 'cancelled'];
+    const groups = await Promise.all(statuses.map((status) => getPurchasesByStatus(status)));
     const purchases = groups.flat();
+    const mapped = await Promise.all(purchases.map(async (purchase) => {
+      const items = await getItems(String(purchase.id));
+      return mapPurchase(purchase, items);
+    }));
 
-    const mapped = await Promise.all(
-      purchases.map(async (purchase) => {
-        const items = await getItems(String(purchase.id));
-
-        return mapPurchase(purchase, items);
-      }),
-    );
-
-    return mapped.sort(
-      (a, b) =>
-        new Date(b.date).getTime() -
-        new Date(a.date).getTime(),
-    );
+    return mapped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   },
 
   async getById(id: string): Promise<Purchase> {
-    const purchase = await apiClient<BackendPurchase>(
-      `/api/purchases/${Number(id)}`,
-    );
-
+    const purchase = await apiClient<BackendPurchase>(`/api/purchases/${Number(id)}`);
     const items = await getItems(id);
-
     return mapPurchase(purchase, items);
   },
 
-  async create(
-    data: CreatePurchaseInput,
-  ): Promise<Purchase> {
-    const response = await apiClient<BackendPurchase>(
-      '/api/purchases',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          supplierId: Number(data.supplierId),
-          purchaseDate: data.purchaseDate,
-          notes: data.notes || null,
-        }),
-      },
-    );
-
+  async create(data: CreatePurchaseInput): Promise<Purchase> {
+    const response = await apiClient<BackendPurchase>('/api/purchases', {
+      method: 'POST',
+      body: JSON.stringify({
+        supplierId: Number(data.supplierId),
+        purchaseDate: data.purchaseDate,
+        notes: data.notes || null,
+      }),
+    });
     return mapPurchase(response);
   },
 
-  async addItem(
-    purchaseId: string,
-    data: AddPurchaseItemInput,
-  ): Promise<PurchaseItem> {
-    const response = await apiClient<BackendPurchaseItem>(
-      `/api/purchases/${Number(purchaseId)}/items`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          productId: Number(data.productId),
-          quantity: data.quantity,
-          unitCost: data.unitCost,
-        }),
-      },
-    );
-
+  async addItem(purchaseId: string, data: AddPurchaseItemInput): Promise<PurchaseItem> {
+    const response = await apiClient<BackendPurchaseItem>(`/api/purchases/${Number(purchaseId)}/items`, {
+      method: 'POST',
+      body: JSON.stringify({
+        productId: Number(data.productId),
+        quantity: data.quantity,
+        unitCost: data.unitCost,
+      }),
+    });
     return mapPurchaseItem(response);
   },
 
+  async update(id: string, data: UpdatePurchaseInput): Promise<Purchase> {
+    await apiClient<BackendPurchase>(`/api/purchases/${Number(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        supplierId: Number(data.supplierId),
+        purchaseDate: data.purchaseDate,
+        notes: data.notes || null,
+        items: toItemPayload(data.items),
+      }),
+    });
+    return this.getById(id);
+  },
+
   async order(id: string): Promise<Purchase> {
-    const response = await apiClient<BackendPurchase>(
-      `/api/purchases/${Number(id)}/order`,
-      {
-        method: 'POST',
-      },
-    );
-
+    const response = await apiClient<BackendPurchase>(`/api/purchases/${Number(id)}/order`, {
+      method: 'POST',
+    });
     const items = await getItems(id);
-
     return mapPurchase(response, items);
   },
 
   async receive(id: string): Promise<Purchase> {
-    const response = await apiClient<BackendPurchase>(
-      `/api/purchases/${Number(id)}/receive`,
-      {
-        method: 'POST',
-      },
-    );
-
+    const response = await apiClient<BackendPurchase>(`/api/purchases/${Number(id)}/receive`, {
+      method: 'POST',
+    });
     const items = await getItems(id);
-
     return mapPurchase(response, items);
   },
 
   async cancel(id: string): Promise<Purchase> {
-    const response = await apiClient<BackendPurchase>(
-      `/api/purchases/${Number(id)}/cancel`,
-      {
-        method: 'POST',
-      },
-    );
-
+    const response = await apiClient<BackendPurchase>(`/api/purchases/${Number(id)}/cancel`, {
+      method: 'POST',
+    });
     const items = await getItems(id);
-
     return mapPurchase(response, items);
   },
 
-  async createAndReceive(
-    data: CreateAndReceivePurchaseInput,
-  ): Promise<Purchase> {
+  async createAndReceive(data: CreateAndReceivePurchaseInput): Promise<Purchase> {
     const purchase = await this.create({
       supplierId: data.supplierId,
       purchaseDate: data.purchaseDate,
@@ -222,32 +187,17 @@ export const purchaseService = {
     for (const item of data.items) {
       await this.addItem(purchase.id, item);
     }
-
     await this.order(purchase.id);
-
     return this.receive(purchase.id);
   },
 
   async getTotalThisMonth(): Promise<number> {
     const purchases = await this.getAll();
-
     const now = new Date();
-
-    const monthStart = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      1,
-    );
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     return purchases
-      .filter(
-        (purchase) =>
-          purchase.status === 'received' &&
-          new Date(purchase.date) >= monthStart,
-      )
-      .reduce(
-        (sum, purchase) => sum + purchase.totalCost,
-        0,
-      );
+      .filter((purchase) => purchase.status === 'received' && new Date(purchase.date) >= monthStart)
+      .reduce((sum, purchase) => sum + purchase.totalCost, 0);
   },
 };

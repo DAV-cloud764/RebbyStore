@@ -15,6 +15,7 @@ class RateLimitBucketServiceTest {
                         true,
                         new RateLimitProperties.Rule(10, 1),
                         new RateLimitProperties.Rule(120, 1),
+                        new RateLimitProperties.Rule(10, 1),
                         maxClients,
                         10
                 );
@@ -142,6 +143,7 @@ class RateLimitBucketServiceTest {
                         false,
                         new RateLimitProperties.Rule(10, 1),
                         new RateLimitProperties.Rule(120, 1),
+                        new RateLimitProperties.Rule(10, 1),
                         100,
                         10
                 );
@@ -158,5 +160,28 @@ class RateLimitBucketServiceTest {
 
             assertThat(decision.allowed()).isTrue();
         }
+    }
+
+    @Test
+    void shouldAllowCheckoutRequestsUntilCheckoutCapacityIsExhausted() {
+        RateLimitBucketService service = createService(100);
+
+        for (int i = 0; i < 10; i++) {
+            RateLimitDecision decision = service.tryConsume(
+                    "192.168.1.41",
+                    RateLimitType.CHECKOUT
+            );
+            assertThat(decision.allowed()).isTrue();
+            assertThat(decision.limit()).isEqualTo(10);
+        }
+
+        RateLimitDecision blocked = service.tryConsume(
+                "192.168.1.41",
+                RateLimitType.CHECKOUT
+        );
+
+        assertThat(blocked.allowed()).isFalse();
+        assertThat(blocked.limit()).isEqualTo(10);
+        assertThat(blocked.remainingTokens()).isZero();
     }
 }
